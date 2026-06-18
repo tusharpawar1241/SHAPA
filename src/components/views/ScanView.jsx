@@ -457,38 +457,20 @@ export default function ScanView({
             </div>
           </div>
 
-          {/* Interactive Mock Simulator Scans */}
-          <div className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)] flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-on-surface">Interactive Mock Scans</h3>
-              <span className="material-symbols-outlined text-sm text-secondary">auto_awesome</span>
+          {/* Coming Soon Placeholder */}
+          <div className="bg-surface-container-lowest rounded-2xl p-8 border border-dashed border-outline-variant/60 shadow-[0_4px_12px_rgba(0,0,0,0.02)] flex flex-col items-center justify-center text-center gap-4 min-h-[200px]">
+            <div className="w-16 h-16 rounded-full bg-secondary-container/30 flex items-center justify-center text-secondary mb-2">
+              <span className="material-symbols-outlined text-3xl">construction</span>
             </div>
-            <p className="text-xs text-on-surface-variant mt-[-8px]">
-              Select a pre-loaded sample label to test profile-driven verification logic:
-            </p>
-            
-            <div className="flex flex-col gap-2.5">
-              {samples.map(s => (
-                <div 
-                  key={s.id} 
-                  onClick={() => { stopCamera(); triggerMockScan(s.id); }}
-                  className="flex items-center gap-4 p-4 border border-outline-variant/40 rounded-xl bg-surface-container-lowest hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:border-outline transition-all duration-200 cursor-pointer"
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    activeCategory === 'food' ? 'bg-secondary/15 text-secondary' : activeCategory === 'medicine' ? 'bg-primary/15 text-primary' : 'bg-tertiary/15 text-tertiary'
-                  }`}>
-                    <span className="material-symbols-outlined">
-                      {activeCategory === 'food' ? 'restaurant' : activeCategory === 'medicine' ? 'medication' : 'science'}
-                    </span>
-                  </div>
-                  <div className="overflow-hidden flex-grow">
-                    <p className="text-xs font-bold truncate text-on-surface">{s.product_name}</p>
-                    <p className="text-[10px] text-on-surface-variant truncate">{s.brand_name} • Sample Label</p>
-                  </div>
-                  <span className="text-[9px] font-bold px-3 py-1 rounded-full bg-secondary-container/10 text-secondary uppercase tracking-wider">Test</span>
-                </div>
-              ))}
+            <div>
+              <h3 className="text-base font-bold text-on-surface">Community Scan Database</h3>
+              <p className="text-xs text-on-surface-variant mt-2 max-w-[250px] mx-auto">
+                We're building a crowdsourced database of verified product safety scans. 
+              </p>
             </div>
+            <span className="text-[10px] font-bold px-3 py-1.5 rounded-full bg-secondary text-white uppercase tracking-wider mt-2 shadow-sm">
+              Feature Coming Soon
+            </span>
           </div>
 
           {/* History Scan Logs */}
