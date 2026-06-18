@@ -8,6 +8,7 @@ export default function ScanView({
   clearHistory, 
   triggerMockScan, 
   analyzeBase64Image,
+  analyzeTextQuery,
   viewHistoryItem,
   hapticFeedback
 }) {
@@ -22,14 +23,32 @@ export default function ScanView({
   const [dragOver, setDragOver] = useState(false);
   const [stream, setStream] = useState(null);
 
-  // Restart camera when component mounts or activeCategory changes
+  // Search tabs & inputs state
+  const [activeTab, setActiveTab] = useState('scan'); // 'scan' or 'search'
+  const [searchName, setSearchName] = useState('');
+  const [searchBarcode, setSearchBarcode] = useState('');
+  const [searchKeywords, setSearchKeywords] = useState('');
+  const [compareMedicine, setCompareMedicine] = useState('');
+  const [isCameraViewOpen, setIsCameraViewOpen] = useState(false);
+
+  // Stop camera when component mounts or activeCategory changes by default
   useEffect(() => {
-    startCamera();
+    if (activeTab === 'scan') {
+      if (isCameraViewOpen) startCamera();
+      else stopCamera();
+    } else {
+      setIsCameraViewOpen(false);
+      stopCamera();
+    }
     setImagePreview(null);
+    setSearchName('');
+    setSearchBarcode('');
+    setSearchKeywords('');
+    setCompareMedicine('');
     return () => {
       stopCamera();
     };
-  }, [activeCategory]);
+  }, [activeCategory, activeTab]);
 
   const startCamera = async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -72,10 +91,8 @@ export default function ScanView({
 
   const triggerShutter = () => {
     if (cameraActive && stream) {
-      // Shutter haptic check
       hapticFeedback();
 
-      // Trigger visual shutter flash
       const flash = document.getElementById('flash-screen');
       if (flash) {
         flash.style.animation = 'flashEffect 0.3s ease-out';
@@ -103,7 +120,6 @@ export default function ScanView({
         }, 1000);
       }
     } else {
-      // Trigger file upload if camera inactive
       if (fileInputRef.current) {
         fileInputRef.current.click();
       }
@@ -154,136 +170,271 @@ export default function ScanView({
     reader.readAsDataURL(file);
   };
 
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (!searchName && !searchBarcode && !searchKeywords) {
+      alert("Please fill in at least one field (Product Name, Barcode, or Keywords) to search.");
+      return;
+    }
+    
+    let queryText = searchName;
+    if (searchBarcode) {
+      queryText = queryText ? `${queryText} (ID: ${searchBarcode})` : `Barcode: ${searchBarcode}`;
+    }
+    if (searchKeywords) {
+      queryText = queryText ? `${queryText} (Keywords: ${searchKeywords})` : searchKeywords;
+    }
+
+    analyzeTextQuery(queryText, compareMedicine, activeCategory);
+  };
+
   const samples = mockDatabase[activeCategory] || [];
 
   return (
     <div className="animate-[fadeIn_0.4s_ease]">
-      <div className="mb-6">
-        <div className="text-[11px] uppercase tracking-wider text-on-surface-variant font-semibold mb-1">
-          AI Scanning Terminal
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-on-surface-variant font-semibold mb-1">
+            AI Scanning &amp; Inquiry Terminal
+          </div>
+          <h2 className="text-3xl font-extrabold text-on-surface leading-tight">
+            Analyze Product Safety
+          </h2>
+          <p className="text-sm text-on-surface-variant mt-1">
+            Provide a clean label photo or enter product identifiers below.
+          </p>
         </div>
-        <h2 className="text-3xl font-extrabold text-on-surface leading-tight">
-          Scan Product Label
-        </h2>
-        <p className="text-sm text-on-surface-variant mt-1">
-          Provide a clean image of ingredients or drug facts for analysis.
-        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        {/* Left Column: Viewfinder & File Drag-Drop */}
+      {/* Modern Tabs */}
+      <div className="flex gap-2 border-b border-outline-variant/30 pb-0.5 mb-6">
+        <button 
+          onClick={() => setActiveTab('scan')}
+          className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all cursor-pointer bg-transparent outline-none border-none ${
+            activeTab === 'scan' ? 'border-b-2 border-solid border-primary text-primary font-extrabold' : 'border-b-0 text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+          <span>Label Scanner</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('search')}
+          className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all cursor-pointer bg-transparent outline-none border-none ${
+            activeTab === 'search' ? 'border-b-2 border-solid border-primary text-primary font-extrabold' : 'border-b-0 text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">search</span>
+          <span>Search Product details</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Viewfinder / Search fields */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           
-          {/* Viewfinder Card */}
-          <div className="bg-black rounded-2xl overflow-hidden relative aspect-[4/3] flex items-center justify-center shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] border border-neutral-900">
-            {/* Live Camera Video */}
-            <video 
-              ref={videoRef} 
-              className={`absolute inset-0 w-full h-full object-cover z-10 ${cameraActive && !imagePreview ? 'block' : 'hidden'}`}
-              autoplay 
-              playsinline 
-              muted
-            ></video>
-            
-            {/* Canvas for rendering frames */}
-            <canvas ref={canvasRef} className="hidden absolute inset-0 w-full h-full object-cover z-10"></canvas>
-            
-            {/* Captured / Uploaded Image Preview */}
-            {imagePreview && (
-              <img 
-                src={imagePreview} 
-                className="absolute inset-0 w-full h-full object-cover z-20" 
-                alt="Captured product label"
-              />
-            )}
+          {activeTab === 'scan' ? (
+            <>
+              {/* Viewfinder Card */}
+              {isCameraViewOpen && (
+              <div className="bg-black rounded-2xl overflow-hidden relative aspect-[4/3] flex items-center justify-center shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] border border-neutral-900">
+                {/* Live Camera Video */}
+                <video 
+                  ref={videoRef} 
+                  className={`absolute inset-0 w-full h-full object-cover z-10 ${cameraActive && !imagePreview ? 'block' : 'hidden'}`}
+                  autoPlay 
+                  playsInline 
+                  muted
+                ></video>
+                
+                {/* Canvas for rendering frames */}
+                <canvas ref={canvasRef} className="hidden absolute inset-0 w-full h-full object-cover z-10"></canvas>
+                
+                {/* Captured / Uploaded Image Preview */}
+                {imagePreview && (
+                  <img 
+                    src={imagePreview} 
+                    className="absolute inset-0 w-full h-full object-cover z-20" 
+                    alt="Captured product label"
+                  />
+                )}
 
-            {/* Viewfinder Vignette Overlay */}
-            <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(0,0,0,0.6)_0%,rgba(0,0,0,0)_25%,rgba(0,0,0,0)_75%,rgba(0,0,0,0.6)_100%)] z-20 pointer-events-none"></div>
-            
-            {/* Focus bracket and scan overlay */}
-            <div className="relative z-30 w-[240px] h-[240px] flex items-center justify-center pointer-events-none">
-              <div className="absolute top-0 left-0 w-9 h-9 border-t-4 border-l-4 border-primary-fixed rounded-tl-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
-              <div className="absolute top-0 right-0 w-9 h-9 border-t-4 border-r-4 border-primary-fixed rounded-tr-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
-              <div className="absolute bottom-0 left-0 w-9 h-9 border-b-4 border-l-4 border-primary-fixed rounded-bl-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
-              <div className="absolute bottom-0 right-0 w-9 h-9 border-b-4 border-r-4 border-primary-fixed rounded-br-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
-              
-              {/* Scan laser animation line */}
-              {cameraActive && !imagePreview && (
-                <div className="absolute w-full h-0.5 bg-[linear-gradient(90deg,transparent,var(--color-primary-fixed),transparent)] shadow-[0_0_15px_var(--color-primary-fixed)] animate-[scan-line_3s_ease-in-out_infinite]"></div>
+                {/* Viewfinder Vignette Overlay */}
+                <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(0,0,0,0.6)_0%,rgba(0,0,0,0)_25%,rgba(0,0,0,0)_75%,rgba(0,0,0,0.6)_100%)] z-20 pointer-events-none"></div>
+                
+                {/* Focus bracket and scan overlay */}
+                <div className="relative z-30 w-[240px] h-[240px] flex items-center justify-center pointer-events-none">
+                  <div className="absolute top-0 left-0 w-9 h-9 border-t-4 border-l-4 border-primary-fixed rounded-tl-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
+                  <div className="absolute top-0 right-0 w-9 h-9 border-t-4 border-r-4 border-primary-fixed rounded-tr-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
+                  <div className="absolute bottom-0 left-0 w-9 h-9 border-b-4 border-l-4 border-primary-fixed rounded-bl-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
+                  <div className="absolute bottom-0 right-0 w-9 h-9 border-b-4 border-r-4 border-primary-fixed rounded-br-xl shadow-[0_0_10px_rgba(130,250,171,0.3)]"></div>
+                  
+                  {/* Scan laser animation line */}
+                  {cameraActive && !imagePreview && (
+                    <div className="absolute w-full h-0.5 bg-[linear-gradient(90deg,transparent,var(--color-primary-fixed),transparent)] shadow-[0_0_15px_var(--color-primary-fixed)] animate-[scan-line_3s_ease-in-out_infinite]"></div>
+                  )}
+                  
+                  <div className={`text-white/95 font-semibold text-[11px] text-center px-4 bg-black/40 backdrop-blur-md py-1.5 rounded-full ${indicatorColor}`}>
+                    {indicatorText}
+                  </div>
+                </div>
+
+                {/* Viewfinder Action Buttons */}
+                <div className="absolute bottom-6 left-0 w-full flex justify-around items-center z-30 px-6">
+                  <button 
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    className="w-11 h-11 rounded-xl bg-black/50 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-black/75 transition-colors cursor-pointer" 
+                    title="Gallery Upload"
+                  >
+                    <span className="material-symbols-outlined">photo_library</span>
+                  </button>
+                  
+                  <button 
+                    onClick={triggerShutter}
+                    className="w-[68px] h-[68px] rounded-full bg-white border-4 border-black/30 flex items-center justify-center cursor-pointer active:scale-95 transition-transform" 
+                    title="Capture &amp; Analyze"
+                  >
+                    <div className="w-[50px] h-[50px] rounded-full bg-white border border-outline-variant hover:bg-neutral-100 transition-colors active:scale-90 duration-75"></div>
+                  </button>
+                  
+                  <button 
+                    onClick={startCamera}
+                    className="w-11 h-11 rounded-xl bg-black/50 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-black/75 transition-colors cursor-pointer" 
+                    title="Reset Camera Feed"
+                  >
+                    <span className="material-symbols-outlined">sync_camera</span>
+                  </button>
+                  <button 
+                    onClick={() => { setIsCameraViewOpen(false); stopCamera(); }}
+                    className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-black/75 transition-colors cursor-pointer z-50"
+                    title="Close Camera"
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+              </div>
               )}
-              
-              <div className={`text-white/95 font-semibold text-[11px] text-center px-4 bg-black/40 backdrop-blur-md py-1.5 rounded-full ${indicatorColor}`}>
-                {indicatorText}
-              </div>
-            </div>
 
-            {/* Viewfinder Action Buttons */}
-            <div className="absolute bottom-6 left-0 w-full flex justify-around items-center z-30 px-6">
-              <button 
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                className="w-11 h-11 rounded-xl bg-black/50 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-black/75 transition-colors cursor-pointer" 
-                title="Gallery Upload"
-              >
-                <span className="material-symbols-outlined">photo_library</span>
-              </button>
-              
-              <button 
-                onClick={triggerShutter}
-                className="w-[68px] h-[68px] rounded-full bg-white border-4 border-black/30 flex items-center justify-center cursor-pointer active:scale-95 transition-transform" 
-                title="Capture &amp; Analyze"
-              >
-                <div className="w-[50px] h-[50px] rounded-full bg-white border border-outline-variant hover:bg-neutral-100 transition-colors active:scale-90 duration-75"></div>
-              </button>
-              
-              <button 
-                onClick={startCamera}
-                className="w-11 h-11 rounded-xl bg-black/50 backdrop-blur-md border border-white/20 text-white flex items-center justify-center hover:bg-black/75 transition-colors cursor-pointer" 
-                title="Reset Camera Feed"
-              >
-                <span className="material-symbols-outlined">sync_camera</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Drag & Drop Upload Zone */}
-          <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-            <div 
-              onDragEnter={handleDrag}
-              onDragOver={handleDrag}
-              onDragLeave={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              className={`border-2 border-dashed border-outline-variant rounded-2xl p-8 flex flex-col items-center justify-center text-center min-h-[200px] cursor-pointer transition-all duration-300 ${
-                dragOver ? 'border-primary bg-primary/5 scale-[1.005]' : 'bg-surface-container-lowest hover:border-primary/60'
-              }`}
-            >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange}
-                accept="image/*,application/pdf" 
-                className="hidden"
-              />
-              <div className="w-14 h-14 rounded-full bg-surface-container-low flex items-center justify-center mb-4 text-primary transition-colors">
-                <span className="material-symbols-outlined text-3xl">cloud_upload</span>
-              </div>
-              <h3 className="text-md font-bold mb-1">Drag &amp; Drop Product Label</h3>
-              <p className="text-xs text-on-surface-variant max-w-[360px] mx-auto mb-4">
-                Upload a photograph of the ingredients statement or nutritional panel (JPG, PNG, or PDF up to 10MB)
-              </p>
-              
-              <div className="flex gap-4">
-                <div className="badge-tag">
-                  <span className="material-symbols-outlined text-sm">image</span>
-                  <span>Images</span>
-                </div>
-                <div className="badge-tag">
-                  <span className="material-symbols-outlined text-sm">description</span>
-                  <span>PDFs</span>
+              {/* Drag & Drop Upload Zone */}
+              <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+                <div 
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                  className={`border-2 border-dashed border-outline-variant rounded-2xl p-8 flex flex-col items-center justify-center text-center min-h-[200px] cursor-pointer transition-all duration-300 ${
+                    dragOver ? 'border-primary bg-primary/5 scale-[1.005]' : 'bg-surface-container-lowest hover:border-primary/60'
+                  }`}
+                >
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileChange}
+                    accept="image/*,application/pdf" 
+                    className="hidden"
+                  />
+                  <div className="w-14 h-14 rounded-full bg-surface-container-low flex items-center justify-center mb-4 text-primary transition-colors">
+                    <span className="material-symbols-outlined text-3xl">cloud_upload</span>
+                  </div>
+                  <h3 className="text-md font-bold mb-1">Drag &amp; Drop Product Label</h3>
+                  <p className="text-xs text-on-surface-variant max-w-[360px] mx-auto mb-4">
+                    Upload a photograph of ingredients or nutritional statement.
+                  </p>
+                  
+                  <div className="flex gap-4">
+                    <div className="badge-tag">
+                      <span className="material-symbols-outlined text-sm">image</span>
+                      <span>Images</span>
+                    </div>
+                    <div className="badge-tag">
+                      <span className="material-symbols-outlined text-sm">description</span>
+                      <span>PDFs</span>
+                    </div>
+                  </div>
+                  
+                  {!isCameraViewOpen && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setIsCameraViewOpen(true); startCamera(); }}
+                      className="mt-6 flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-6 rounded-full text-sm hover:bg-primary-container hover:text-on-surface shadow-md cursor-pointer transition-all duration-200 border-none outline-none"
+                    >
+                      <span className="material-symbols-outlined">photo_camera</span>
+                      <span>Scan with Camera</span>
+                    </button>
+                  )}
                 </div>
               </div>
+            </>
+          ) : (
+            /* Tab 2: Text Search Form */
+            <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+              <form onSubmit={handleSearchSubmit} className="flex flex-col gap-5">
+                <div className="flex items-center gap-2 mb-2 text-primary">
+                  <span className="material-symbols-outlined">search</span>
+                  <h3 className="text-sm font-bold uppercase tracking-wider">Search Safety Database</h3>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Product Name</label>
+                  <input 
+                    type="text" 
+                    value={searchName}
+                    onChange={(e) => setSearchName(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all bg-white"
+                    placeholder="e.g. Cetaphil Cleanser, Oreo Cookies, Metformin"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Product Barcode / ID (Optional)</label>
+                  <input 
+                    type="text" 
+                    value={searchBarcode}
+                    onChange={(e) => setSearchBarcode(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all bg-white"
+                    placeholder="e.g. 7622201814437"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Keywords or Concerns (Optional)</label>
+                  <input 
+                    type="text" 
+                    value={searchKeywords}
+                    onChange={(e) => setSearchKeywords(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all bg-white"
+                    placeholder="e.g. Acne face wash, Gluten-free cookie, Diabetes medicine"
+                  />
+                </div>
+
+                {activeCategory === 'medicine' && (
+                  <div className="flex flex-col gap-1.5 p-3.5 bg-secondary-container/5 rounded-xl border border-secondary/20 mt-1">
+                    <label className="text-xs font-bold text-secondary flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm">swap_horiz</span>
+                      <span>Drug Interaction Checker</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      value={compareMedicine}
+                      onChange={(e) => setCompareMedicine(e.target.value)}
+                      className="w-full p-2.5 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all bg-white"
+                      placeholder="Enter secondary medicine to crosscheck (e.g. Ibuprofen)"
+                    />
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                      Matches drug safety profiles and evaluates potential clinical interactions.
+                    </p>
+                  </div>
+                )}
+
+                <button 
+                  type="submit"
+                  className="w-full bg-primary text-white font-bold py-3.5 rounded-xl text-xs hover:bg-primary-container shadow-md cursor-pointer transition-colors duration-150 border-none outline-none mt-2 flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                  <span>Analyze Product via AI</span>
+                </button>
+              </form>
             </div>
-          </div>
+          )}
 
         </div>
 
@@ -347,7 +498,7 @@ export default function ScanView({
               {scanHistory.length > 0 && (
                 <button 
                   onClick={clearHistory}
-                  className="text-xs text-on-surface-variant hover:text-error hover:underline font-semibold"
+                  className="text-xs text-on-surface-variant hover:text-error hover:underline font-semibold bg-transparent border-none outline-none cursor-pointer"
                 >
                   Clear Logs
                 </button>
@@ -391,7 +542,7 @@ export default function ScanView({
                         isSafe 
                           ? 'bg-primary/10 text-primary' 
                           : isDanger 
-                            ? 'bg-error-container text-on-error-container' 
+                            ? 'bg-error-container text-on-error-container font-extrabold' 
                             : 'bg-secondary-container/10 text-secondary'
                       }`}>
                         {badgeText} ({scoreVal.toFixed(1)})

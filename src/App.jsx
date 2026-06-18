@@ -25,16 +25,21 @@ export default function App() {
   // Default User Profile state
   const [userProfile, setUserProfile] = useState({
     name: "John Doe",
+    age: 35,
+    gender: "male",
+    allergies: "peanuts, milk",
     dietary_goals: {
       gluten_free: true,
       dairy_free: true,
       nut_free: true,
       soy_free: false,
       low_sugar: true,
-      organic_only: false
+      organic_only: false,
+      weight_loss: false
     },
     skin_profile: {
       skin_type: "sensitive",
+      skin_concerns: ["acne", "dryness"],
       avoid_ingredients: ["parabens", "sulfates", "phthalates"]
     },
     medical_profile: {
@@ -50,10 +55,11 @@ export default function App() {
   });
 
   // Default API Settings state
+  const envApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
   const [apiSettings, setApiSettings] = useState({
-    mode: 'mock',
-    apiKey: '',
-    model: 'gemini-2.5-flash',
+    mode: envApiKey ? 'gemini' : 'mock',
+    apiKey: envApiKey,
+    model: 'gemini-1.5-flash',
     verbose: true,
     haptic: true
   });
@@ -70,7 +76,21 @@ export default function App() {
 
     const cachedSettings = localStorage.getItem('guardian_api_settings');
     if (cachedSettings) {
-      setApiSettings(JSON.parse(cachedSettings));
+      const parsed = JSON.parse(cachedSettings);
+      if (!parsed.apiKey && envApiKey) {
+        parsed.apiKey = envApiKey;
+        parsed.mode = 'gemini';
+      }
+      if (parsed.model === 'gemini-2.5-flash' || parsed.model === 'gemini-2.5-pro') {
+        parsed.model = 'gemini-1.5-flash';
+      }
+      setApiSettings(parsed);
+    } else if (envApiKey) {
+      setApiSettings(prev => ({
+        ...prev,
+        apiKey: envApiKey,
+        mode: 'gemini'
+      }));
     }
 
     const cachedHistory = localStorage.getItem('guardian_scan_history');
@@ -210,7 +230,53 @@ export default function App() {
         setLoadingStatus("Sending payload to Gemini model...");
         
         const profileString = JSON.stringify(userProfile);
-        const prompt = `You are an expert AI Product Safety Assistant tasked with analyzing the provided image of a ${activeCategory.toUpperCase()} product and cross-referencing its contents against this user profile: ${profileString}. Scan the image to accurately extract the product name, brand, and ingredients or nutritional/medical facts, correcting any inherent OCR errors. Based on the extracted data and the specific category rules—if Food, evaluate sugar, fat, sodium, and health-goal friendliness; if Cosmetics, check suitability for the user's skin type and flag allergens; if Medicine, identify uses, side effects, and strictly flag warnings related to the user's health conditions or drug interactions—evaluate the product's safety. Finally, you must return the results strictly as a raw JSON object without any markdown formatting or extra conversational text, using exactly these keys: "product_name", "brand_name", "extracted_ingredients" (as a list), "safety_score" (from 0 to 10), "analysis_summary" (a 2-sentence summary), "compatibility_flags" (a list of objects containing "flag_type" and "message"), "better_alternatives" (a list of alternative products), and "disclaimer" (stating this is for educational purposes only).`;
+        const prompt = `You are an expert AI Product Safety Assistant tasked with analyzing the provided image of a ${activeCategory.toUpperCase()} product and cross-referencing its contents against this user profile: ${profileString}. Scan the image to accurately extract the product name, brand, and ingredients or nutritional/medical facts, correcting any inherent OCR errors. Based on the extracted data and the specific category rules, evaluate the product's safety.
+Finally, you must return the results strictly as a raw JSON object without any markdown formatting or extra conversational text, using exactly this JSON structure:
+{
+  "product_name": "Product Name",
+  "brand_name": "Brand/Manufacturer Name",
+  "extracted_ingredients": ["Ingredient 1", "Ingredient 2", ...],
+  "safety_score": 8.0, // a float score from 0.0 to 10.0
+  "analysis_summary": "A brief summary sentence.",
+  "compatibility_flags": [
+    { "flag_type": "Danger|Warning|Info", "message": "Reason for flag" }
+  ],
+  "better_alternatives": [
+    { "name": "Alternative Name", "desc": "Short description", "score": "9.5", "price": "$12.99", "tags": ["SAFE", "COMPATIBLE"] }
+  ],
+  "disclaimer": "This is for educational purposes only...",
+  "cosmetics_details": {
+    "acne_compatible": "Safe | Avoid | Caution",
+    "sensitive_compatible": "Safe | Avoid | Caution",
+    "harmful_ingredients_detected": ["Ingredient name", ...]
+  },
+  "food_details": {
+    "sugar_analysis": "High | Medium | Low",
+    "fat_analysis": "High | Medium | Low",
+    "sodium_analysis": "High | Medium | Low",
+    "diabetes_friendly": true,
+    "weight_loss_friendly": true,
+    "harmful_additives": ["Additive name", ...]
+  },
+  "medicine_details": {
+    "strength": "e.g. 500 mg",
+    "uses": ["Use 1", ...],
+    "side_effects": {
+      "common": ["Nausea", ...],
+      "serious": ["Severe weakness", ...]
+    },
+    "personalized_warnings": ["Warning 1", ...],
+    "drug_interactions": [
+      { "drug_a": "Metformin", "drug_b": "Ibuprofen", "severity": "Danger|Warning", "description": "Details..." }
+    ],
+    "safety_flags": {
+      "allergy_risk": "None | High | Moderate",
+      "pregnancy_warning": "Safe | Caution | Contraindicated",
+      "kidney_liver_caution": "Safe | Caution | Contraindicated",
+      "overdose_risk": "Low | High"
+    }
+  }
+}`;
 
         if (apiSettings.verbose) {
           console.log("GEMINI PROMPT:", prompt);
@@ -286,6 +352,201 @@ export default function App() {
     }
   };
 
+  // Gemini API text search caller
+  const analyzeTextQuery = async (queryText, compareText, activeCategoryOverride) => {
+    const category = activeCategoryOverride || activeCategory;
+    setLoadingActive(true);
+    setLoadingTitle("AI Product Identification");
+    setLoadingStatus("Searching product databases...");
+
+    if (apiSettings.mode === 'mock' || !apiSettings.apiKey) {
+      // Simulator fallback
+      setTimeout(() => { setLoadingStatus("Matching ingredients profile..."); }, 1000);
+      setTimeout(() => {
+        const samples = mockDatabase[category] || [];
+        let matchedItem = null;
+        const queryLower = (queryText || '').toLowerCase();
+        
+        if (category === 'medicine') {
+          const compareLower = (compareText || '').toLowerCase();
+          const isMetformin = queryLower.includes("metformin") || compareLower.includes("metformin");
+          const isIbuprofen = queryLower.includes("ibuprofen") || compareLower.includes("ibuprofen") || queryLower.includes("advil") || compareLower.includes("advil");
+          
+          if (isMetformin && isIbuprofen) {
+            const baseMetformin = samples.find(s => s.id === 'sample_metformin');
+            if (baseMetformin) {
+              matchedItem = JSON.parse(JSON.stringify(baseMetformin));
+              matchedItem.product_name = "Metformin + Ibuprofen Combo";
+              matchedItem.extracted_ingredients.push("Ibuprofen 400mg");
+            }
+          }
+        }
+
+        if (!matchedItem && queryText) {
+          matchedItem = samples.find(s => 
+            s.product_name.toLowerCase().includes(queryLower) || 
+            s.id.toLowerCase().includes(queryLower) ||
+            s.brand_name.toLowerCase().includes(queryLower)
+          );
+        }
+
+        if (!matchedItem) {
+          if (samples.length > 0) {
+            matchedItem = samples[0];
+          } else {
+            matchedItem = {
+              product_name: queryText || "Custom Product",
+              brand_name: "Generic AI Brand",
+              extracted_ingredients: ["Water", "Sugar", "Sodium Chloride"],
+              safety_score: 8.0,
+              better_alternatives: [],
+              disclaimer: "Simulated results for unlisted mock item."
+            };
+          }
+        }
+
+        const evaluated = runRulesEngine(matchedItem, category, userProfile);
+        setResultsData(evaluated);
+        addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, category);
+        
+        setLoadingActive(false);
+        switchView('results');
+      }, 2000);
+    } else {
+      // Live Gemini Connection
+      try {
+        setLoadingStatus("Connecting to Gemini AI Studio...");
+        const profileString = JSON.stringify(userProfile);
+        const prompt = `You are an expert AI Product Safety Assistant tasked with analyzing the ${category.toUpperCase()} product specified by the query: "${queryText}". ${compareText ? `Also compare it with this secondary medicine for interactions: "${compareText}".` : ''}
+Cross-reference its contents and safety against this user profile: ${profileString}.
+Identify the product name, brand, active ingredients (and strength if medicine), and manufacturer.
+Based on the specific category rules:
+- If Food: evaluate sugar, fat, sodium, health-goal friendliness, allergen risks, and harmful additives.
+- If Cosmetics: evaluate ingredient safety, suitable skin types, acne-prone compatibility, sensitive skin compatibility, and harmful ingredients.
+- If Medicine: identify uses/diseases treated, strength, side effects (common and serious), personalized warnings (cross-referenced with user age, conditions, pregnancy, etc.), drug interactions with the user's current medications (${userProfile.medical_profile.current_medications.join(', ')}), and safety flags.
+Also, if the query or compared text represents multiple medicines, check for drug-to-drug interactions between them!
+
+You must return the results strictly as a raw JSON object without any markdown formatting, backticks, or extra conversational text. Use exactly this JSON structure:
+{
+  "product_name": "Product Name",
+  "brand_name": "Brand/Manufacturer Name",
+  "extracted_ingredients": ["Ingredient 1", "Ingredient 2", ...],
+  "safety_score": 8.0, // a float score from 0.0 to 10.0
+  "analysis_summary": "A brief summary sentence.",
+  "compatibility_flags": [
+    { "flag_type": "Danger|Warning|Info", "message": "Reason for flag" }
+  ],
+  "better_alternatives": [
+    { "name": "Alternative Name", "desc": "Short description", "score": "9.5", "price": "$12.99", "tags": ["SAFE", "COMPATIBLE"] }
+  ],
+  "disclaimer": "This is for educational purposes only...",
+  "cosmetics_details": {
+    "acne_compatible": "Safe | Avoid | Caution",
+    "sensitive_compatible": "Safe | Avoid | Caution",
+    "harmful_ingredients_detected": ["Ingredient name", ...]
+  },
+  "food_details": {
+    "sugar_analysis": "High | Medium | Low",
+    "fat_analysis": "High | Medium | Low",
+    "sodium_analysis": "High | Medium | Low",
+    "diabetes_friendly": true,
+    "weight_loss_friendly": true,
+    "harmful_additives": ["Additive name", ...]
+  },
+  "medicine_details": {
+    "strength": "e.g. 500 mg",
+    "uses": ["Use 1", ...],
+    "side_effects": {
+      "common": ["Nausea", ...],
+      "serious": ["Severe weakness", ...]
+    },
+    "personalized_warnings": ["Warning 1", ...],
+    "drug_interactions": [
+      { "drug_a": "Metformin", "drug_b": "Ibuprofen", "severity": "Danger|Warning", "description": "Details..." }
+    ],
+    "safety_flags": {
+      "allergy_risk": "None | High | Moderate",
+      "pregnancy_warning": "Safe | Caution | Contraindicated",
+      "kidney_liver_caution": "Safe | Caution | Contraindicated",
+      "overdose_risk": "Low | High"
+    }
+  }
+}`;
+
+        if (apiSettings.verbose) {
+          console.log("GEMINI PROMPT:", prompt);
+        }
+
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${apiSettings.model}:generateContent?key=${apiSettings.apiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: "application/json"
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP Error status: ${response.status}. Please check your API key.`);
+        }
+
+        const json = await response.json();
+        const rawText = json.candidates[0].content.parts[0].text;
+        
+        if (apiSettings.verbose) {
+          console.log("GEMINI TEXT RESPONSE:", rawText);
+        }
+
+        const parsed = JSON.parse(rawText);
+        
+        // Ensure alternatives are present
+        if (parsed.better_alternatives) {
+          parsed.better_alternatives = parsed.better_alternatives.map((alt, idx) => {
+            return {
+              name: alt.name || alt.product_name || `Alternative ${idx + 1}`,
+              desc: alt.desc || alt.description || "A compatible natural replacement.",
+              score: alt.safety_score ? alt.safety_score.toString() : "9.0",
+              price: alt.price || "$9.99",
+              image: alt.image || (category === 'food' ? "/cereal_label.png" : category === 'cosmetics' ? "/cosmetic_label.png" : "/medicine_label.png"),
+              tags: alt.tags || ["SAFE", "COMPATIBLE"]
+            };
+          });
+        }
+
+        setResultsData(parsed);
+        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, category);
+        
+        setLoadingActive(false);
+        switchView('results');
+
+      } catch (err) {
+        console.error(err);
+        setLoadingActive(false);
+        alert("AI Search Failed: " + err.message + "\n\nReverting to Local Simulator.");
+        // Try local matching
+        const samples = mockDatabase[category] || [];
+        let matchedItem = samples.find(s => s.product_name.toLowerCase().includes(queryText.toLowerCase()));
+        if (!matchedItem && samples.length > 0) matchedItem = samples[0];
+        if (matchedItem) {
+          const evaluated = runRulesEngine(matchedItem, category, userProfile);
+          setResultsData(evaluated);
+          addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, category);
+          switchView('results');
+        }
+      }
+    }
+  };
+
   return (
     <div className="flex min-h-screen w-full bg-background text-on-surface">
       {/* Shutter flash screen component */}
@@ -323,6 +584,7 @@ export default function App() {
               clearHistory={clearHistory}
               triggerMockScan={triggerMockScan}
               analyzeBase64Image={analyzeBase64Image}
+              analyzeTextQuery={analyzeTextQuery}
               viewHistoryItem={viewHistoryItem}
               hapticFeedback={hapticFeedback}
             />

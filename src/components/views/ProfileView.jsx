@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 export default function ProfileView({ userProfile, saveProfile }) {
   // general
   const [name, setName] = useState('');
+  const [age, setAge] = useState(35);
+  const [gender, setGender] = useState('male');
+  const [allergies, setAllergies] = useState('');
   
   // food
   const [gluten, setGluten] = useState(false);
@@ -11,9 +14,11 @@ export default function ProfileView({ userProfile, saveProfile }) {
   const [soy, setSoy] = useState(false);
   const [sugar, setSugar] = useState(false);
   const [organic, setOrganic] = useState(false);
+  const [weightLoss, setWeightLoss] = useState(false);
 
   // skin
   const [skinType, setSkinType] = useState('sensitive');
+  const [skinConcerns, setSkinConcerns] = useState([]);
   const [avoidCosmetics, setAvoidCosmetics] = useState('');
 
   // meds
@@ -31,22 +36,27 @@ export default function ProfileView({ userProfile, saveProfile }) {
   useEffect(() => {
     if (userProfile) {
       setName(userProfile.name || '');
+      setAge(userProfile.age || 35);
+      setGender(userProfile.gender || 'male');
+      setAllergies(userProfile.allergies || '');
       
-      setGluten(!!userProfile.dietary_goals.gluten_free);
-      setDairy(!!userProfile.dietary_goals.dairy_free);
-      setNuts(!!userProfile.dietary_goals.nut_free);
-      setSoy(!!userProfile.dietary_goals.soy_free);
-      setSugar(!!userProfile.dietary_goals.low_sugar);
-      setOrganic(!!userProfile.dietary_goals.organic_only);
+      setGluten(!!userProfile.dietary_goals?.gluten_free);
+      setDairy(!!userProfile.dietary_goals?.dairy_free);
+      setNuts(!!userProfile.dietary_goals?.nut_free);
+      setSoy(!!userProfile.dietary_goals?.soy_free);
+      setSugar(!!userProfile.dietary_goals?.low_sugar);
+      setOrganic(!!userProfile.dietary_goals?.organic_only);
+      setWeightLoss(!!userProfile.dietary_goals?.weight_loss);
 
-      setSkinType(userProfile.skin_profile.skin_type || 'sensitive');
-      setAvoidCosmetics((userProfile.skin_profile.avoid_ingredients || []).join(', '));
+      setSkinType(userProfile.skin_profile?.skin_type || 'sensitive');
+      setSkinConcerns(userProfile.skin_profile?.skin_concerns || []);
+      setAvoidCosmetics((userProfile.skin_profile?.avoid_ingredients || []).join(', '));
 
-      setHypertension(!!userProfile.medical_profile.conditions.hypertension);
-      setPregnancy(!!userProfile.medical_profile.conditions.pregnancy);
-      setDiabetes(!!userProfile.medical_profile.conditions.diabetes);
-      setKidney(!!userProfile.medical_profile.conditions.kidney_disease);
-      setCurrentMeds((userProfile.medical_profile.current_medications || []).join(', '));
+      setHypertension(!!userProfile.medical_profile?.conditions?.hypertension);
+      setPregnancy(!!userProfile.medical_profile?.conditions?.pregnancy);
+      setDiabetes(!!userProfile.medical_profile?.conditions?.diabetes);
+      setKidney(!!userProfile.medical_profile?.conditions?.kidney_disease);
+      setCurrentMeds((userProfile.medical_profile?.current_medications || []).join(', '));
 
       setJsonText(JSON.stringify(userProfile, null, 2));
     }
@@ -57,16 +67,21 @@ export default function ProfileView({ userProfile, saveProfile }) {
 
     const updated = {
       name,
+      age: parseInt(age) || 35,
+      gender,
+      allergies,
       dietary_goals: {
         gluten_free: gluten,
         dairy_free: dairy,
         nut_free: nuts,
         soy_free: soy,
         low_sugar: sugar,
-        organic_only: organic
+        organic_only: organic,
+        weight_loss: weightLoss
       },
       skin_profile: {
         skin_type: skinType,
+        skin_concerns: skinConcerns,
         avoid_ingredients: avoidCosmetics.split(',').map(s => s.trim().toLowerCase()).filter(s => s)
       },
       medical_profile: {
@@ -77,7 +92,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
           kidney_disease: kidney
         },
         current_medications: currentMeds.split(',').map(s => s.trim().toLowerCase()).filter(s => s),
-        drug_allergies: userProfile.medical_profile.drug_allergies || []
+        drug_allergies: userProfile.medical_profile?.drug_allergies || []
       }
     };
 
@@ -87,7 +102,6 @@ export default function ProfileView({ userProfile, saveProfile }) {
 
   const handleJsonAction = () => {
     if (jsonEditing) {
-      // Save direct JSON
       try {
         const parsed = JSON.parse(jsonText);
         saveProfile(parsed);
@@ -117,7 +131,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
           Health Profile
         </h2>
         <p className="text-sm text-on-surface-variant mt-1">
-          Configure the allergen and goal rules that drive the AI safety evaluator.
+          Configure the health metrics, allergies, and concerns that drive the AI safety analysis.
         </p>
       </div>
 
@@ -127,20 +141,57 @@ export default function ProfileView({ userProfile, saveProfile }) {
         <div className="lg:col-span-2 bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-sm">
           <form onSubmit={handleSubmit} className="flex flex-col gap-6">
             
+            {/* General Info */}
             <div>
               <h3 className="text-sm font-bold border-b border-outline-variant/30 pb-1.5 text-primary mb-4 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-lg">account_circle</span>
                 <span>General Details</span>
               </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Full Name</label>
+                  <input 
+                    type="text" 
+                    value={name} 
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary focus:ring-1 focus:ring-secondary transition-all bg-white"
+                    placeholder="e.g. John Doe"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Age</label>
+                  <input 
+                    type="number" 
+                    value={age} 
+                    onChange={(e) => setAge(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary focus:ring-1 focus:ring-secondary transition-all bg-white"
+                    placeholder="e.g. 35"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Gender</label>
+                  <select 
+                    value={gender} 
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 bg-white rounded-lg outline-none text-xs focus:border-secondary transition-all"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+              
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-on-surface">Full Name</label>
+                <label className="text-xs font-semibold text-on-surface">General Allergies (e.g. peanuts, dairy, gluten)</label>
                 <input 
                   type="text" 
-                  value={name} 
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary focus:ring-1 focus:ring-secondary transition-all"
-                  placeholder="e.g. John Doe"
-                  required
+                  value={allergies} 
+                  onChange={(e) => setAllergies(e.target.value)}
+                  className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary focus:ring-1 focus:ring-secondary transition-all bg-white"
+                  placeholder="e.g. peanuts, milk, sulfur"
                 />
               </div>
             </div>
@@ -152,7 +203,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
                 <span>Food Safety Settings</span>
               </h3>
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-on-surface mb-1">Dietary Restrictions &amp; Allergies</label>
+                <label className="text-xs font-semibold text-on-surface mb-1">Dietary Restrictions &amp; Goals</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <label className="flex items-center gap-3 text-xs font-medium text-on-surface-variant cursor-pointer select-none">
                     <input 
@@ -208,6 +259,15 @@ export default function ProfileView({ userProfile, saveProfile }) {
                     />
                     Organic Only
                   </label>
+                  <label className="flex items-center gap-3 text-xs font-medium text-on-surface-variant cursor-pointer select-none col-span-1 sm:col-span-2">
+                    <input 
+                      type="checkbox" 
+                      checked={weightLoss} 
+                      onChange={(e) => setWeightLoss(e.target.checked)}
+                      className="w-[18px] h-[18px] border border-outline-variant rounded cursor-pointer accent-primary"
+                    />
+                    Weight Loss Goals (Flags High Sugar &amp; Fats)
+                  </label>
                 </div>
               </div>
             </div>
@@ -219,7 +279,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
                 <span>Skincare Settings</span>
               </h3>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-on-surface">Skin Type</label>
                   <select 
@@ -227,7 +287,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
                     onChange={(e) => setSkinType(e.target.value)}
                     className="w-full p-3 border border-outline-variant/50 bg-white rounded-lg outline-none text-xs focus:border-secondary transition-all"
                   >
-                    <option value="sensitive">Sensitive Skin (easily irritated)</option>
+                    <option value="sensitive">Sensitive Skin</option>
                     <option value="dry">Dry Skin</option>
                     <option value="oily">Oily Skin</option>
                     <option value="combination">Combination Skin</option>
@@ -240,9 +300,60 @@ export default function ProfileView({ userProfile, saveProfile }) {
                     type="text" 
                     value={avoidCosmetics} 
                     onChange={(e) => setAvoidCosmetics(e.target.value)}
-                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all"
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all bg-white"
                     placeholder="e.g. Parabens, Fragrance, Phthalates"
                   />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-on-surface mb-1 bg-transparent">Skin Concerns</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <label className="flex items-center gap-3 text-xs font-medium text-on-surface-variant cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={skinConcerns.includes("acne")} 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSkinConcerns([...skinConcerns, "acne"]);
+                        } else {
+                          setSkinConcerns(skinConcerns.filter(c => c !== "acne"));
+                        }
+                      }}
+                      className="w-[18px] h-[18px] border border-outline-variant rounded cursor-pointer accent-primary"
+                    />
+                    Acne-Prone
+                  </label>
+                  <label className="flex items-center gap-3 text-xs font-medium text-on-surface-variant cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={skinConcerns.includes("pigmentation")} 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSkinConcerns([...skinConcerns, "pigmentation"]);
+                        } else {
+                          setSkinConcerns(skinConcerns.filter(c => c !== "pigmentation"));
+                        }
+                      }}
+                      className="w-[18px] h-[18px] border border-outline-variant rounded cursor-pointer accent-primary"
+                    />
+                    Pigmentation / Dark Spots
+                  </label>
+                  <label className="flex items-center gap-3 text-xs font-medium text-on-surface-variant cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={skinConcerns.includes("dryness")} 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSkinConcerns([...skinConcerns, "dryness"]);
+                        } else {
+                          setSkinConcerns(skinConcerns.filter(c => c !== "dryness"));
+                        }
+                      }}
+                      className="w-[18px] h-[18px] border border-outline-variant rounded cursor-pointer accent-primary"
+                    />
+                    Dryness / Flakiness
+                  </label>
                 </div>
               </div>
             </div>
@@ -303,7 +414,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
                     type="text" 
                     value={currentMeds} 
                     onChange={(e) => setCurrentMeds(e.target.value)}
-                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all"
+                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all bg-white"
                     placeholder="e.g. Lisinopril, Aspirin, Warfarin"
                   />
                 </div>
@@ -313,7 +424,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
             <div className="pt-2">
               <button 
                 type="submit" 
-                className="w-full bg-primary text-white font-bold py-3.5 rounded-xl text-sm hover:bg-primary-container shadow-md cursor-pointer transition-colors duration-150"
+                className="w-full bg-primary text-white font-bold py-3.5 rounded-xl text-sm hover:bg-primary-container shadow-md cursor-pointer transition-colors duration-150 border-none outline-none"
               >
                 Save Profile Changes
               </button>
@@ -329,7 +440,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
               <span className="material-symbols-outlined text-sm text-outline">code</span>
             </div>
             <p className="text-[11px] text-on-surface-variant mt-[-8px]">
-              This is the exact <code className="bg-surface-container-high px-1 rounded font-mono font-bold">{`{USER_PROFILE_JSON}`}</code> synced structure sent to Gemini:
+              This is the exact JSON structure sent to Gemini:
             </p>
             <textarea 
               value={jsonText}
@@ -342,7 +453,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
             <div className="flex gap-3">
               <button 
                 onClick={copyJson}
-                className="flex-1 border border-outline px-4 py-2.5 rounded-xl text-[11px] font-bold hover:bg-surface-container-low transition-colors text-center cursor-pointer"
+                className="flex-1 border border-outline px-4 py-2.5 rounded-xl text-[11px] font-bold hover:bg-surface-container-low transition-colors text-center cursor-pointer bg-transparent text-on-surface"
               >
                 Copy JSON
               </button>
@@ -351,7 +462,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
                 className={`flex-1 px-4 py-2.5 rounded-xl text-[11px] font-bold text-center cursor-pointer transition-colors ${
                   jsonEditing 
                     ? 'bg-secondary text-white hover:bg-secondary-container' 
-                    : 'border border-outline hover:bg-surface-container-low'
+                    : 'border border-outline hover:bg-surface-container-low bg-transparent text-on-surface'
                 }`}
               >
                 {jsonEditing ? 'Save Raw JSON' : 'Edit Raw JSON'}

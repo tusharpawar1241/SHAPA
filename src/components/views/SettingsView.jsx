@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 export default function SettingsView({ apiSettings, saveSettings }) {
   const [mode, setMode] = useState('mock');
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gemini-2.5-flash');
+  const [model, setModel] = useState('gemini-1.5-flash');
   const [verbose, setVerbose] = useState(true);
   const [haptic, setHaptic] = useState(true);
 
@@ -11,7 +11,7 @@ export default function SettingsView({ apiSettings, saveSettings }) {
     if (apiSettings) {
       setMode(apiSettings.mode || 'mock');
       setApiKey(apiSettings.apiKey || '');
-      setModel(apiSettings.model || 'gemini-2.5-flash');
+      setModel((apiSettings.model === 'gemini-2.5-flash' || apiSettings.model === 'gemini-2.5-pro') ? 'gemini-1.5-flash' : (apiSettings.model || 'gemini-1.5-flash'));
       setVerbose(apiSettings.verbose !== false);
       setHaptic(apiSettings.haptic !== false);
     }
@@ -33,14 +33,14 @@ export default function SettingsView({ apiSettings, saveSettings }) {
       const defaults = {
         mode: 'mock',
         apiKey: '',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
         verbose: true,
         haptic: true
       };
       saveSettings(defaults);
       setMode('mock');
       setApiKey('');
-      setModel('gemini-2.5-flash');
+      setModel('gemini-1.5-flash');
       setVerbose(true);
       setHaptic(true);
       alert("Settings reset to defaults.");
@@ -63,60 +63,7 @@ export default function SettingsView({ apiSettings, saveSettings }) {
 
       <div className="settings-card bg-surface-container-lowest p-6 border border-outline-variant/30 rounded-2xl shadow-sm max-w-[700px] mt-6 flex flex-col gap-6">
         
-        <div>
-          <h3 className="text-sm font-bold border-b border-outline-variant/30 pb-1.5 text-primary mb-4 flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-lg">bolt</span>
-            <span>Google Gemini AI Connector</span>
-          </h3>
-          <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
-            Enter your Google AI Studio API key to perform actual image character recognition (OCR) and safety analysis using the Gemini API. If disabled, the app uses preloaded mock evaluations.
-          </p>
 
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-on-surface">Analysis Mode</label>
-              <select 
-                value={mode} 
-                onChange={(e) => setMode(e.target.value)}
-                className="w-full p-3 border border-outline-variant/50 bg-white rounded-lg outline-none text-xs focus:border-secondary transition-all"
-              >
-                <option value="mock">Local Simulator Mode (Mock Data - No Key Needed)</option>
-                <option value="gemini">Live Google Gemini API Mode</option>
-              </select>
-            </div>
-
-            {mode === 'gemini' && (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-on-surface">Gemini API Key</label>
-                  <input 
-                    type="password" 
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="w-full p-3 border border-outline-variant/50 rounded-lg outline-none text-xs focus:border-secondary transition-all"
-                    placeholder="AIzaSy..."
-                  />
-                  <p className="text-[10px] text-on-surface-variant">
-                    Your API key is stored locally in your browser's LocalStorage and is sent directly to Google's API endpoints.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-on-surface">Gemini Model selection</label>
-                  <select 
-                    value={model} 
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full p-3 border border-outline-variant/50 bg-white rounded-lg outline-none text-xs focus:border-secondary transition-all"
-                  >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended - Fast &amp; Accurate)</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep reasoning)</option>
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
 
         <div>
           <h3 className="text-sm font-bold border-b border-outline-variant/30 pb-1.5 text-secondary mb-4 flex items-center gap-1.5">
