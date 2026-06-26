@@ -31,25 +31,6 @@ export default function ScanView({
   const [compareMedicine, setCompareMedicine] = useState('');
   const [isCameraViewOpen, setIsCameraViewOpen] = useState(false);
 
-  // Stop camera when component mounts or activeCategory changes by default
-  useEffect(() => {
-    if (activeTab === 'scan') {
-      if (isCameraViewOpen) startCamera();
-      else stopCamera();
-    } else {
-      setIsCameraViewOpen(false);
-      stopCamera();
-    }
-    setImagePreview(null);
-    setSearchName('');
-    setSearchBarcode('');
-    setSearchKeywords('');
-    setCompareMedicine('');
-    return () => {
-      stopCamera();
-    };
-  }, [activeCategory, activeTab]);
-
   const startCamera = async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
@@ -88,6 +69,26 @@ export default function ScanView({
     }
     setCameraActive(false);
   };
+
+  // Stop camera when component mounts or activeCategory changes by default
+  useEffect(() => {
+    if (activeTab === 'scan') {
+      if (isCameraViewOpen) startCamera();
+      else stopCamera();
+    } else {
+      setIsCameraViewOpen(false);
+      stopCamera();
+    }
+    setImagePreview(null);
+    setSearchName('');
+    setSearchBarcode('');
+    setSearchKeywords('');
+    setCompareMedicine('');
+    return () => {
+      stopCamera();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, activeTab, isCameraViewOpen]);
 
   const triggerShutter = () => {
     if (cameraActive && stream) {

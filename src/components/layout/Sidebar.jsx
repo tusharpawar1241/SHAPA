@@ -1,5 +1,6 @@
 import React from 'react';
-
+import { auth } from '../../firebase';
+import { signOut } from 'firebase/auth';
 export default function Sidebar({ currentView, switchView, userProfile }) {
   const getInitials = (name) => {
     if (!name) return 'JD';
@@ -63,13 +64,7 @@ export default function Sidebar({ currentView, switchView, userProfile }) {
           </div>
         </div>
         <button 
-          onClick={() => {
-            import('../../firebase').then(({ auth }) => {
-              import('firebase/auth').then(({ signOut }) => {
-                signOut(auth);
-              });
-            });
-          }}
+          onClick={() => signOut(auth)}
           className="w-full text-left flex items-center gap-2 text-xs text-on-surface-variant hover:text-error transition-colors mt-2"
         >
           <span className="material-symbols-outlined text-[16px]">logout</span>
