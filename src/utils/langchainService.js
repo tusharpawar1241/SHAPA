@@ -3,20 +3,27 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { JsonOutputParser } from "@langchain/core/output_parsers";
 import { HumanMessage } from "@langchain/core/messages";
 
-const promptTemplateString = `You are an expert AI Product Safety Assistant tasked with analyzing a {category} product and cross-referencing its contents against this user profile: 
-{profile}
+const promptTemplateString = `You are an expert AI Product Safety Assistant. The user has selected the category "{category}", but you MUST independently verify the actual product type from the image or query.
 
-Scan the image or product query to accurately extract the product name, brand, and ingredients or nutritional/medical facts, correcting any inherent OCR errors. Based on the extracted data and the specific category rules, evaluate the product's safety.
+CRITICAL RULES:
+1. FIRST, identify what the product actually is. If the image shows a FOOD product but the user selected "COSMETICS", you MUST analyze it as FOOD and set "detected_category" to "food".
+2. NEVER hallucinate or invent a fake product name. Extract the REAL product name exactly as shown on the label/packaging.
+3. If the image is too blurry, unreadable, or missing product details, DO NOT GUESS. Set "error_message" to a helpful instruction (e.g. "The image is too blurry to read. Please try again with a clearer photo of the ingredients label.") and leave the rest of the fields empty/default.
+4. Extract REAL ingredients from the actual label. Do NOT fabricate ingredients.
+5. Cross-reference the product against this user health profile: {profile}
+6. Be strict and accurate with safety scoring — only flag real concerns based on real ingredients.
 
 {format_instructions}`;
 
-const formatInstructions = `Finally, you must return the results strictly as a raw JSON object without any markdown formatting or extra conversational text, using exactly this JSON structure:
+const formatInstructions = `Return the results strictly as a raw JSON object without any markdown formatting or extra text. Use exactly this structure:
 {
-  "product_name": "Product Name",
+  "error_message": "String (Only populate if image is blurry or unreadable. Otherwise omit or leave null)",
+  "detected_category": "food | cosmetics | medicine",
+  "product_name": "Exact product name from the label",
   "brand_name": "Brand/Manufacturer Name",
   "extracted_ingredients": ["Ingredient 1", "Ingredient 2"],
   "safety_score": 8.0,
-  "analysis_summary": "A brief summary sentence.",
+  "analysis_summary": "A brief factual summary sentence.",
   "compatibility_flags": [
     { "flag_type": "Danger|Warning|Info", "message": "Reason for flag" }
   ],
@@ -55,7 +62,9 @@ const formatInstructions = `Finally, you must return the results strictly as a r
       "overdose_risk": "Low | High"
     }
   }
-}`;
+}
+
+IMPORTANT: The "detected_category" field must reflect the ACTUAL product type you identified, which may differ from what the user selected. Only populate the details section that matches the detected_category (e.g., only populate food_details if detected_category is food).`;
 
 export const analyzeProductWithLangchain = async (
   category, 

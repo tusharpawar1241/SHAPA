@@ -29,6 +29,15 @@ export default function App() {
   const updateLoadingStatus = useCallback((status) => setLoading(prev => ({ ...prev, status })), []);
   const stopLoading = useCallback(() => setLoading({ active: false, title: '', status: '' }), []);
 
+  // Toast Notification State
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
+  const showToast = useCallback((message, type = 'info') => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+    }, 4000);
+  }, []);
+
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -293,9 +302,21 @@ export default function App() {
       try {
         updateLoadingStatus('Sending payload to Gemini model...');
         const parsed = await analyzeProductWithLangchain(activeCategory, userProfile, apiSettings, null, base64Image, mimeType);
-        normalizeAlternatives(parsed, activeCategory);
+        
+        if (parsed.error_message) {
+          stopLoading();
+          showToast(parsed.error_message, 'error');
+          return;
+        }
+
+        // Auto-correct category if AI detected a different product type
+        const realCategory = parsed.detected_category || activeCategory;
+        if (realCategory !== activeCategory) {
+          setActiveCategory(realCategory);
+        }
+        normalizeAlternatives(parsed, realCategory);
         setResultsData(parsed);
-        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, activeCategory);
+        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
         stopLoading();
         switchView('results');
       } catch (err) {
@@ -360,9 +381,21 @@ export default function App() {
       try {
         updateLoadingStatus('Connecting to Gemini AI Studio...');
         const parsed = await analyzeProductWithLangchain(category, userProfile, apiSettings, queryText, null, null, compareText);
-        normalizeAlternatives(parsed, category);
+        
+        if (parsed.error_message) {
+          stopLoading();
+          showToast(parsed.error_message, 'error');
+          return;
+        }
+
+        // Auto-correct category if AI detected a different product type
+        const realCategory = parsed.detected_category || category;
+        if (realCategory !== activeCategory) {
+          setActiveCategory(realCategory);
+        }
+        normalizeAlternatives(parsed, realCategory);
         setResultsData(parsed);
-        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, category);
+        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
         stopLoading();
         switchView('results');
       } catch (err) {
@@ -438,6 +471,7 @@ export default function App() {
               <ProfileView 
                 userProfile={userProfile} 
                 saveProfile={saveProfile} 
+                showToast={showToast}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 animate-[fadeIn_0.4s_ease]">
@@ -487,6 +521,20 @@ export default function App() {
         title={loading.title} 
         status={loading.status} 
       />
+
+      {/* 4. Toast Notification */}
+      <div 
+        className={`fixed bottom-24 md:bottom-6 right-6 max-w-sm w-max bg-surface-container-highest text-on-surface p-4 rounded-xl shadow-xl border border-outline-variant/30 flex items-center gap-3 transition-all duration-300 z-[100] ${
+          toast.visible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-10 opacity-0 pointer-events-none'
+        }`}
+      >
+        <span className={`material-symbols-outlined ${
+          toast.type === 'error' ? 'text-error' : toast.type === 'success' ? 'text-green-500' : 'text-primary'
+        }`}>
+          {toast.type === 'error' ? 'error' : toast.type === 'success' ? 'check_circle' : 'info'}
+        </span>
+        <p className="text-sm font-medium">{toast.message}</p>
+      </div>
     </div>
   );
 }

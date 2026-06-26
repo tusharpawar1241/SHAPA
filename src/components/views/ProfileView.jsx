@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function ProfileView({ userProfile, saveProfile }) {
+export default function ProfileView({ userProfile, saveProfile, showToast }) {
   // general
   const [name, setName] = useState('');
   const [age, setAge] = useState(35);
@@ -97,7 +97,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
     };
 
     saveProfile(updated);
-    alert("Profile saved successfully!");
+    if (showToast) showToast("Profile saved successfully!", "success");
   };
 
   const handleJsonAction = () => {
@@ -106,9 +106,9 @@ export default function ProfileView({ userProfile, saveProfile }) {
         const parsed = JSON.parse(jsonText);
         saveProfile(parsed);
         setJsonEditing(false);
-        alert("JSON parsed and profile updated successfully!");
+        if (showToast) showToast("JSON parsed and profile updated successfully!", "success");
       } catch (err) {
-        alert("Invalid JSON format: " + err.message);
+        if (showToast) showToast("Invalid JSON format: " + err.message, "error");
       }
     } else {
       setJsonEditing(true);
@@ -117,7 +117,7 @@ export default function ProfileView({ userProfile, saveProfile }) {
 
   const copyJson = () => {
     navigator.clipboard.writeText(jsonText).then(() => {
-      alert("Profile JSON copied to clipboard!");
+      if (showToast) showToast("Profile JSON copied to clipboard!", "success");
     });
   };
 
