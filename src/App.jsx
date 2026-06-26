@@ -12,6 +12,11 @@ import LoadingOverlay from './components/common/LoadingOverlay';
 import { mockDatabase } from './utils/mockData';
 import { runRulesEngine } from './utils/rulesEngine';
 
+import { auth, db } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import LoginView from './components/views/LoginView';
+
 export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [activeCategory, setActiveCategory] = useState('food');
@@ -21,6 +26,10 @@ export default function App() {
   const [loadingActive, setLoadingActive] = useState(false);
   const [loadingTitle, setLoadingTitle] = useState('');
   const [loadingStatus, setLoadingStatus] = useState('');
+
+  // Auth state
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Default User Profile state
   const [userProfile, setUserProfile] = useState({
@@ -59,7 +68,7 @@ export default function App() {
   const [apiSettings, setApiSettings] = useState({
     mode: envApiKey ? 'gemini' : 'mock',
     apiKey: envApiKey,
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
     verbose: true,
     haptic: true
   });
@@ -67,22 +76,18 @@ export default function App() {
   // History state
   const [scanHistory, setScanHistory] = useState([]);
 
-  // Load state from local storage on mount
+  // Load API settings & history on mount
   useEffect(() => {
-    const cachedProfile = localStorage.getItem('guardian_user_profile');
-    if (cachedProfile) {
-      setUserProfile(JSON.parse(cachedProfile));
-    }
-
+    // We keep API settings in local storage
     const cachedSettings = localStorage.getItem('guardian_api_settings');
     if (cachedSettings) {
       const parsed = JSON.parse(cachedSettings);
-      if (!parsed.apiKey && envApiKey) {
+      if (envApiKey) {
         parsed.apiKey = envApiKey;
         parsed.mode = 'gemini';
       }
-      if (parsed.model === 'gemini-2.5-flash' || parsed.model === 'gemini-2.5-pro') {
-        parsed.model = 'gemini-1.5-flash';
+      if (parsed.model === 'gemini-1.5-flash') {
+        parsed.model = 'gemini-2.5-flash';
       }
       setApiSettings(parsed);
     } else if (envApiKey) {
@@ -111,6 +116,37 @@ export default function App() {
     }
   }, []);
 
+  // Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        try {
+          const docRef = doc(db, 'users', user.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setUserProfile(docSnap.data());
+          } else {
+            // Create default profile in Firestore
+            await setDoc(docRef, userProfile);
+          }
+        } catch (error) {
+          console.error("Error fetching profile from Firestore:", error);
+          // fallback to local storage if firestore fails
+          const cachedProfile = localStorage.getItem('guardian_user_profile');
+          if (cachedProfile) {
+            setUserProfile(JSON.parse(cachedProfile));
+          }
+        }
+      } else {
+        setCurrentUser(null);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [userProfile]);
+
   const switchView = (viewName) => {
     setCurrentView(viewName);
   };
@@ -119,9 +155,18 @@ export default function App() {
     setActiveCategory(category);
   };
 
-  const saveProfile = (updatedProfile) => {
+  const saveProfile = async (updatedProfile) => {
     setUserProfile(updatedProfile);
     localStorage.setItem('guardian_user_profile', JSON.stringify(updatedProfile));
+    
+    if (currentUser) {
+      try {
+        const docRef = doc(db, 'users', currentUser.uid);
+        await setDoc(docRef, updatedProfile);
+      } catch (error) {
+        console.error("Error saving profile to Firestore:", error);
+      }
+    }
   };
 
   const saveSettings = (updatedSettings) => {
@@ -308,7 +353,18 @@ Finally, you must return the results strictly as a raw JSON object without any m
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP Error status: ${response.status}. Please check your API key.`);
+          let errorMsg = `HTTP Error status: ${response.status}`;
+          try {
+            const errJson = await response.json();
+            if (errJson.error && errJson.error.message) {
+              errorMsg += ` - ${errJson.error.message}`;
+            } else {
+              errorMsg += `. Please check your API key or quota.`;
+            }
+          } catch(e) {
+            errorMsg += `. Please check your API key or quota.`;
+          }
+          throw new Error(errorMsg);
         }
 
         const json = await response.json();
@@ -343,11 +399,7 @@ Finally, you must return the results strictly as a raw JSON object without any m
       } catch (err) {
         console.error(err);
         setLoadingActive(false);
-        alert("AI Analysis Failed: " + err.message + "\n\nReverting to Local Simulator.");
-        // Save mode toggle back to mock
-        const newSettings = { ...apiSettings, mode: 'mock' };
-        setApiSettings(newSettings);
-        localStorage.setItem('guardian_api_settings', JSON.stringify(newSettings));
+        alert("AI Analysis Failed: " + err.message);
       }
     }
   };
@@ -497,7 +549,18 @@ You must return the results strictly as a raw JSON object without any markdown f
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP Error status: ${response.status}. Please check your API key.`);
+          let errorMsg = `HTTP Error status: ${response.status}`;
+          try {
+            const errJson = await response.json();
+            if (errJson.error && errJson.error.message) {
+              errorMsg += ` - ${errJson.error.message}`;
+            } else {
+              errorMsg += `. Please check your API key or quota.`;
+            }
+          } catch(e) {
+            errorMsg += `. Please check your API key or quota.`;
+          }
+          throw new Error(errorMsg);
         }
 
         const json = await response.json();
@@ -532,20 +595,22 @@ You must return the results strictly as a raw JSON object without any markdown f
       } catch (err) {
         console.error(err);
         setLoadingActive(false);
-        alert("AI Search Failed: " + err.message + "\n\nReverting to Local Simulator.");
-        // Try local matching
-        const samples = mockDatabase[category] || [];
-        let matchedItem = samples.find(s => s.product_name.toLowerCase().includes(queryText.toLowerCase()));
-        if (!matchedItem && samples.length > 0) matchedItem = samples[0];
-        if (matchedItem) {
-          const evaluated = runRulesEngine(matchedItem, category, userProfile);
-          setResultsData(evaluated);
-          addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, category);
-          switchView('results');
-        }
+        alert("AI Search Failed: " + err.message);
       }
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginView />;
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-background text-on-surface">
