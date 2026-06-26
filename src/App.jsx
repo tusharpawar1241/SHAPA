@@ -41,6 +41,7 @@ export default function App() {
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [devPreviewMode, setDevPreviewMode] = useState(false);
 
   // Default User Profile state
   const [userProfile, setUserProfile] = useState({
@@ -467,7 +468,7 @@ export default function App() {
           )}
 
           {currentView === 'profile' && (
-            currentUser ? (
+            (currentUser || devPreviewMode) ? (
               <ProfileView 
                 userProfile={userProfile} 
                 saveProfile={saveProfile} 
@@ -477,9 +478,14 @@ export default function App() {
               <div className="flex flex-col items-center justify-center py-16 gap-4 animate-[fadeIn_0.4s_ease]">
                 <span className="material-symbols-outlined text-6xl text-on-surface-variant/40">lock</span>
                 <p className="text-on-surface-variant text-sm">Sign in to access your Health Profile</p>
-                <button onClick={() => switchView('login')} className="bg-primary text-white font-bold py-3 px-8 rounded-xl text-sm hover:bg-primary-container shadow-md transition-colors cursor-pointer">
-                  Log In
-                </button>
+                <div className="flex flex-col gap-2 w-full max-w-xs">
+                  <button onClick={() => switchView('login')} className="bg-primary text-white font-bold py-3 px-8 rounded-xl text-sm hover:bg-primary-container shadow-md transition-colors cursor-pointer w-full">
+                    Log In
+                  </button>
+                  <button onClick={() => setDevPreviewMode(true)} className="bg-white border border-outline-variant text-on-surface font-bold py-3 px-8 rounded-xl text-sm hover:bg-surface-container-low transition-colors cursor-pointer w-full">
+                    Dev Preview Mode (No Auth)
+                  </button>
+                </div>
               </div>
             )
           )}
