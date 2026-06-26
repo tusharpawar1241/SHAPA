@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 export default function SettingsView({ apiSettings, saveSettings }) {
   const [mode, setMode] = useState('mock');
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('gemini-1.5-flash');
+  const [model, setModel] = useState('gemini-2.5-flash');
   const [verbose, setVerbose] = useState(true);
   const [haptic, setHaptic] = useState(true);
 
@@ -11,7 +11,7 @@ export default function SettingsView({ apiSettings, saveSettings }) {
     if (apiSettings) {
       setMode(apiSettings.mode || 'mock');
       setApiKey(apiSettings.apiKey || '');
-      setModel((apiSettings.model === 'gemini-2.5-flash' || apiSettings.model === 'gemini-2.5-pro') ? 'gemini-1.5-flash' : (apiSettings.model || 'gemini-1.5-flash'));
+      setModel(apiSettings.model === 'gemini-1.5-flash' ? 'gemini-2.5-flash' : (apiSettings.model || 'gemini-2.5-flash'));
       setVerbose(apiSettings.verbose !== false);
       setHaptic(apiSettings.haptic !== false);
     }
@@ -33,14 +33,14 @@ export default function SettingsView({ apiSettings, saveSettings }) {
       const defaults = {
         mode: 'mock',
         apiKey: '',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         verbose: true,
         haptic: true
       };
       saveSettings(defaults);
       setMode('mock');
       setApiKey('');
-      setModel('gemini-1.5-flash');
+      setModel('gemini-2.5-flash');
       setVerbose(true);
       setHaptic(true);
       alert("Settings reset to defaults.");
