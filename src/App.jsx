@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
@@ -11,6 +11,7 @@ import LoadingOverlay from './components/common/LoadingOverlay';
 
 import { mockDatabase } from './utils/mockData';
 import { runRulesEngine } from './utils/rulesEngine';
+import { analyzeProductWithLangchain } from './utils/langchainService';
 
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -22,10 +23,11 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('food');
   const [resultsData, setResultsData] = useState(null);
   
-  // Loading state
-  const [loadingActive, setLoadingActive] = useState(false);
-  const [loadingTitle, setLoadingTitle] = useState('');
-  const [loadingStatus, setLoadingStatus] = useState('');
+  // Loading state — single object to avoid 3 separate re-renders
+  const [loading, setLoading] = useState({ active: false, title: '', status: '' });
+  const startLoading = useCallback((title, status) => setLoading({ active: true, title, status }), []);
+  const updateLoadingStatus = useCallback((status) => setLoading(prev => ({ ...prev, status })), []);
+  const stopLoading = useCallback(() => setLoading({ active: false, title: '', status: '' }), []);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);
@@ -117,6 +119,8 @@ export default function App() {
   }, []);
 
   // Firebase Auth Listener
+  // BUG FIX: removed `userProfile` from dependency array — it caused an infinite loop
+  // (onAuthStateChanged fires → setUserProfile → dependency changes → re-subscribes → fires again)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -125,14 +129,26 @@ export default function App() {
           const docRef = doc(db, 'users', user.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            setUserProfile(docSnap.data());
+            const firestoreProfile = docSnap.data();
+            // Keep the profile name in sync with the Google account name
+            if (user.displayName && firestoreProfile.name !== user.displayName) {
+              firestoreProfile.name = user.displayName;
+              await setDoc(docRef, firestoreProfile);
+            }
+            setUserProfile(firestoreProfile);
           } else {
-            // Create default profile in Firestore
-            await setDoc(docRef, userProfile);
+            // Create default profile in Firestore — use Google account name if available
+            const defaultProfile = {
+              name: user.displayName || "New User", age: 25, gender: "", allergies: "",
+              dietary_goals: { gluten_free: false, dairy_free: false, nut_free: false, soy_free: false, low_sugar: false, organic_only: false, weight_loss: false },
+              skin_profile: { skin_type: "normal", skin_concerns: [], avoid_ingredients: [] },
+              medical_profile: { conditions: { hypertension: false, pregnancy: false, diabetes: false, kidney_disease: false }, current_medications: [], drug_allergies: [] }
+            };
+            await setDoc(docRef, defaultProfile);
+            setUserProfile(defaultProfile);
           }
         } catch (error) {
           console.error("Error fetching profile from Firestore:", error);
-          // fallback to local storage if firestore fails
           const cachedProfile = localStorage.getItem('guardian_user_profile');
           if (cachedProfile) {
             setUserProfile(JSON.parse(cachedProfile));
@@ -145,17 +161,13 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [userProfile]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const switchView = (viewName) => {
-    setCurrentView(viewName);
-  };
+  const switchView = useCallback((viewName) => setCurrentView(viewName), []);
+  const selectCategory = useCallback((category) => setActiveCategory(category), []);
 
-  const selectCategory = (category) => {
-    setActiveCategory(category);
-  };
-
-  const saveProfile = async (updatedProfile) => {
+  const saveProfile = useCallback(async (updatedProfile) => {
     setUserProfile(updatedProfile);
     localStorage.setItem('guardian_user_profile', JSON.stringify(updatedProfile));
     
@@ -167,46 +179,59 @@ export default function App() {
         console.error("Error saving profile to Firestore:", error);
       }
     }
-  };
+  }, [currentUser]);
 
-  const saveSettings = (updatedSettings) => {
+  const saveSettings = useCallback((updatedSettings) => {
     setApiSettings(updatedSettings);
     localStorage.setItem('guardian_api_settings', JSON.stringify(updatedSettings));
-  };
+  }, []);
 
-  const clearHistory = () => {
+  const clearHistory = useCallback(() => {
     setScanHistory([]);
     localStorage.setItem('guardian_scan_history', JSON.stringify([]));
-  };
+  }, []);
 
-  const hapticFeedback = () => {
+  const hapticFeedback = useCallback(() => {
     if (apiSettings.haptic && navigator.vibrate) {
       navigator.vibrate(50);
     }
-  };
+  }, [apiSettings.haptic]);
 
-  const addToHistory = (productName, brandName, safetyScore, category) => {
+  const addToHistory = useCallback((productName, brandName, safetyScore, category) => {
     const newItem = {
       product_name: productName || "Unknown Product",
       brand_name: brandName || "Unknown Brand",
       safety_score: safetyScore || 0,
-      category: category,
+      category,
       timestamp: new Date().toLocaleString()
     };
-    const updated = [newItem, ...scanHistory].slice(0, 15);
-    setScanHistory(updated);
-    localStorage.setItem('guardian_scan_history', JSON.stringify(updated));
-  };
+    setScanHistory(prev => {
+      const updated = [newItem, ...prev].slice(0, 15);
+      localStorage.setItem('guardian_scan_history', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // Shared helper to normalize alternatives from Gemini response — avoids code duplication
+  const normalizeAlternatives = useCallback((parsed, category) => {
+    if (!parsed.better_alternatives) return parsed;
+    const imageMap = { food: '/cereal_label.png', cosmetics: '/cosmetic_label.png', medicine: '/medicine_label.png' };
+    parsed.better_alternatives = parsed.better_alternatives.map((alt, idx) => ({
+      name: alt.name || alt.product_name || `Alternative ${idx + 1}`,
+      desc: alt.desc || alt.description || 'A compatible natural replacement.',
+      score: alt.safety_score ? String(alt.safety_score) : '9.0',
+      price: alt.price || '$9.99',
+      image: alt.image || imageMap[category] || '/cereal_label.png',
+      tags: alt.tags || ['SAFE', 'COMPATIBLE']
+    }));
+    return parsed;
+  }, []);
 
   // Mock scan simulator trigger
-  const triggerMockScan = (sampleId) => {
-    setLoadingActive(true);
-    setLoadingTitle("Simulating Label Analysis");
-    setLoadingStatus("Extracting OCR text from sample image...");
+  const triggerMockScan = useCallback((sampleId) => {
+    startLoading('Simulating Label Analysis', 'Extracting OCR text from sample image...');
 
-    setTimeout(() => {
-      setLoadingStatus("Evaluating chemicals against user profile...");
-    }, 1000);
+    setTimeout(() => updateLoadingStatus('Evaluating chemicals against user profile...'), 1000);
 
     setTimeout(() => {
       const samples = mockDatabase[activeCategory] || [];
@@ -215,14 +240,14 @@ export default function App() {
         const evaluated = runRulesEngine(item, activeCategory, userProfile);
         setResultsData(evaluated);
         addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, activeCategory);
-        setLoadingActive(false);
+        stopLoading();
         switchView('results');
       } else {
-        setLoadingActive(false);
-        alert("Sample item not found.");
+        stopLoading();
+        alert('Sample item not found.');
       }
     }, 2000);
-  };
+  }, [activeCategory, userProfile, addToHistory, startLoading, updateLoadingStatus, stopLoading, switchView]);
 
   // View archived item
   const viewHistoryItem = (index) => {
@@ -250,170 +275,44 @@ export default function App() {
   };
 
   // Gemini API analysis caller
-  const analyzeBase64Image = async (base64Image, mimeType) => {
-    setLoadingActive(true);
-    setLoadingTitle("Analyzing Label via Gemini");
-    setLoadingStatus("Connecting to Google AI Studio...");
+  const analyzeBase64Image = useCallback(async (base64Image, mimeType) => {
+    startLoading('Analyzing Label via Gemini', 'Connecting to Google AI Studio...');
 
     if (apiSettings.mode === 'mock' || !apiSettings.apiKey) {
-      // Simulator fallback
-      setTimeout(() => { setLoadingStatus("OCR character extraction complete..."); }, 1000);
+      setTimeout(() => updateLoadingStatus('OCR character extraction complete...'), 1000);
       setTimeout(() => {
         const samples = mockDatabase[activeCategory] || [];
         const item = samples[Math.floor(Math.random() * samples.length)];
         const evaluated = runRulesEngine(item, activeCategory, userProfile);
-        
         setResultsData(evaluated);
         addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, activeCategory);
-        
-        setLoadingActive(false);
+        stopLoading();
         switchView('results');
       }, 2000);
     } else {
-      // Live Gemini connection
       try {
-        setLoadingStatus("Sending payload to Gemini model...");
-        
-        const profileString = JSON.stringify(userProfile);
-        const prompt = `You are an expert AI Product Safety Assistant tasked with analyzing the provided image of a ${activeCategory.toUpperCase()} product and cross-referencing its contents against this user profile: ${profileString}. Scan the image to accurately extract the product name, brand, and ingredients or nutritional/medical facts, correcting any inherent OCR errors. Based on the extracted data and the specific category rules, evaluate the product's safety.
-Finally, you must return the results strictly as a raw JSON object without any markdown formatting or extra conversational text, using exactly this JSON structure:
-{
-  "product_name": "Product Name",
-  "brand_name": "Brand/Manufacturer Name",
-  "extracted_ingredients": ["Ingredient 1", "Ingredient 2", ...],
-  "safety_score": 8.0, // a float score from 0.0 to 10.0
-  "analysis_summary": "A brief summary sentence.",
-  "compatibility_flags": [
-    { "flag_type": "Danger|Warning|Info", "message": "Reason for flag" }
-  ],
-  "better_alternatives": [
-    { "name": "Alternative Name", "desc": "Short description", "score": "9.5", "price": "$12.99", "tags": ["SAFE", "COMPATIBLE"] }
-  ],
-  "disclaimer": "This is for educational purposes only...",
-  "cosmetics_details": {
-    "acne_compatible": "Safe | Avoid | Caution",
-    "sensitive_compatible": "Safe | Avoid | Caution",
-    "harmful_ingredients_detected": ["Ingredient name", ...]
-  },
-  "food_details": {
-    "sugar_analysis": "High | Medium | Low",
-    "fat_analysis": "High | Medium | Low",
-    "sodium_analysis": "High | Medium | Low",
-    "diabetes_friendly": true,
-    "weight_loss_friendly": true,
-    "harmful_additives": ["Additive name", ...]
-  },
-  "medicine_details": {
-    "strength": "e.g. 500 mg",
-    "uses": ["Use 1", ...],
-    "side_effects": {
-      "common": ["Nausea", ...],
-      "serious": ["Severe weakness", ...]
-    },
-    "personalized_warnings": ["Warning 1", ...],
-    "drug_interactions": [
-      { "drug_a": "Metformin", "drug_b": "Ibuprofen", "severity": "Danger|Warning", "description": "Details..." }
-    ],
-    "safety_flags": {
-      "allergy_risk": "None | High | Moderate",
-      "pregnancy_warning": "Safe | Caution | Contraindicated",
-      "kidney_liver_caution": "Safe | Caution | Contraindicated",
-      "overdose_risk": "Low | High"
-    }
-  }
-}`;
-
-        if (apiSettings.verbose) {
-          console.log("GEMINI PROMPT:", prompt);
-        }
-
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${apiSettings.model}:generateContent?key=${apiSettings.apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  {
-                    inlineData: {
-                      mimeType: mimeType,
-                      data: base64Image
-                    }
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseMimeType: "application/json"
-            }
-          })
-        });
-
-        if (!response.ok) {
-          let errorMsg = `HTTP Error status: ${response.status}`;
-          try {
-            const errJson = await response.json();
-            if (errJson.error && errJson.error.message) {
-              errorMsg += ` - ${errJson.error.message}`;
-            } else {
-              errorMsg += `. Please check your API key or quota.`;
-            }
-          } catch(e) {
-            errorMsg += `. Please check your API key or quota.`;
-          }
-          throw new Error(errorMsg);
-        }
-
-        const json = await response.json();
-        const rawText = json.candidates[0].content.parts[0].text;
-        
-        if (apiSettings.verbose) {
-          console.log("GEMINI RESPONSE:", rawText);
-        }
-
-        const parsed = JSON.parse(rawText);
-        
-        // Ensure alternatives are present
-        if (parsed.better_alternatives) {
-          parsed.better_alternatives = parsed.better_alternatives.map((alt, idx) => {
-            return {
-              name: alt.name || alt.product_name || `Alternative ${idx + 1}`,
-              desc: alt.desc || alt.description || "A compatible natural replacement.",
-              score: alt.safety_score ? alt.safety_score.toString() : "9.0",
-              price: alt.price || "$9.99",
-              image: alt.image || (activeCategory === 'food' ? "/cereal_label.png" : activeCategory === 'cosmetics' ? "/cosmetic_label.png" : "/medicine_label.png"),
-              tags: alt.tags || ["SAFE", "COMPATIBLE"]
-            };
-          });
-        }
-
+        updateLoadingStatus('Sending payload to Gemini model...');
+        const parsed = await analyzeProductWithLangchain(activeCategory, userProfile, apiSettings, null, base64Image, mimeType);
+        normalizeAlternatives(parsed, activeCategory);
         setResultsData(parsed);
         addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, activeCategory);
-        
-        setLoadingActive(false);
+        stopLoading();
         switchView('results');
-
       } catch (err) {
         console.error(err);
-        setLoadingActive(false);
-        alert("AI Analysis Failed: " + err.message);
+        stopLoading();
+        alert('AI Analysis Failed: ' + err.message);
       }
     }
-  };
+  }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView]);
 
   // Gemini API text search caller
-  const analyzeTextQuery = async (queryText, compareText, activeCategoryOverride) => {
+  const analyzeTextQuery = useCallback(async (queryText, compareText, activeCategoryOverride) => {
     const category = activeCategoryOverride || activeCategory;
-    setLoadingActive(true);
-    setLoadingTitle("AI Product Identification");
-    setLoadingStatus("Searching product databases...");
+    startLoading('AI Product Identification', 'Searching product databases...');
 
     if (apiSettings.mode === 'mock' || !apiSettings.apiKey) {
-      // Simulator fallback
-      setTimeout(() => { setLoadingStatus("Matching ingredients profile..."); }, 1000);
+      setTimeout(() => updateLoadingStatus('Matching ingredients profile...'), 1000);
       setTimeout(() => {
         const samples = mockDatabase[category] || [];
         let matchedItem = null;
@@ -421,15 +320,13 @@ Finally, you must return the results strictly as a raw JSON object without any m
         
         if (category === 'medicine') {
           const compareLower = (compareText || '').toLowerCase();
-          const isMetformin = queryLower.includes("metformin") || compareLower.includes("metformin");
-          const isIbuprofen = queryLower.includes("ibuprofen") || compareLower.includes("ibuprofen") || queryLower.includes("advil") || compareLower.includes("advil");
+          const isMetformin = queryLower.includes('metformin') || compareLower.includes('metformin');
+          const isIbuprofen = queryLower.includes('ibuprofen') || compareLower.includes('ibuprofen') || queryLower.includes('advil') || compareLower.includes('advil');
           
           if (isMetformin && isIbuprofen) {
             const baseMetformin = samples.find(s => s.id === 'sample_metformin');
             if (baseMetformin) {
-              matchedItem = JSON.parse(JSON.stringify(baseMetformin));
-              matchedItem.product_name = "Metformin + Ibuprofen Combo";
-              matchedItem.extracted_ingredients.push("Ibuprofen 400mg");
+              matchedItem = { ...baseMetformin, product_name: 'Metformin + Ibuprofen Combo', extracted_ingredients: [...baseMetformin.extracted_ingredients, 'Ibuprofen 400mg'] };
             }
           }
         }
@@ -443,162 +340,38 @@ Finally, you must return the results strictly as a raw JSON object without any m
         }
 
         if (!matchedItem) {
-          if (samples.length > 0) {
-            matchedItem = samples[0];
-          } else {
-            matchedItem = {
-              product_name: queryText || "Custom Product",
-              brand_name: "Generic AI Brand",
-              extracted_ingredients: ["Water", "Sugar", "Sodium Chloride"],
-              safety_score: 8.0,
-              better_alternatives: [],
-              disclaimer: "Simulated results for unlisted mock item."
-            };
-          }
+          matchedItem = samples[0] || {
+            product_name: queryText || 'Custom Product',
+            brand_name: 'Generic AI Brand',
+            extracted_ingredients: ['Water', 'Sugar', 'Sodium Chloride'],
+            safety_score: 8.0,
+            better_alternatives: [],
+            disclaimer: 'Simulated results for unlisted mock item.'
+          };
         }
 
         const evaluated = runRulesEngine(matchedItem, category, userProfile);
         setResultsData(evaluated);
         addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, category);
-        
-        setLoadingActive(false);
+        stopLoading();
         switchView('results');
       }, 2000);
     } else {
-      // Live Gemini Connection
       try {
-        setLoadingStatus("Connecting to Gemini AI Studio...");
-        const profileString = JSON.stringify(userProfile);
-        const prompt = `You are an expert AI Product Safety Assistant tasked with analyzing the ${category.toUpperCase()} product specified by the query: "${queryText}". ${compareText ? `Also compare it with this secondary medicine for interactions: "${compareText}".` : ''}
-Cross-reference its contents and safety against this user profile: ${profileString}.
-Identify the product name, brand, active ingredients (and strength if medicine), and manufacturer.
-Based on the specific category rules:
-- If Food: evaluate sugar, fat, sodium, health-goal friendliness, allergen risks, and harmful additives.
-- If Cosmetics: evaluate ingredient safety, suitable skin types, acne-prone compatibility, sensitive skin compatibility, and harmful ingredients.
-- If Medicine: identify uses/diseases treated, strength, side effects (common and serious), personalized warnings (cross-referenced with user age, conditions, pregnancy, etc.), drug interactions with the user's current medications (${userProfile.medical_profile.current_medications.join(', ')}), and safety flags.
-Also, if the query or compared text represents multiple medicines, check for drug-to-drug interactions between them!
-
-You must return the results strictly as a raw JSON object without any markdown formatting, backticks, or extra conversational text. Use exactly this JSON structure:
-{
-  "product_name": "Product Name",
-  "brand_name": "Brand/Manufacturer Name",
-  "extracted_ingredients": ["Ingredient 1", "Ingredient 2", ...],
-  "safety_score": 8.0, // a float score from 0.0 to 10.0
-  "analysis_summary": "A brief summary sentence.",
-  "compatibility_flags": [
-    { "flag_type": "Danger|Warning|Info", "message": "Reason for flag" }
-  ],
-  "better_alternatives": [
-    { "name": "Alternative Name", "desc": "Short description", "score": "9.5", "price": "$12.99", "tags": ["SAFE", "COMPATIBLE"] }
-  ],
-  "disclaimer": "This is for educational purposes only...",
-  "cosmetics_details": {
-    "acne_compatible": "Safe | Avoid | Caution",
-    "sensitive_compatible": "Safe | Avoid | Caution",
-    "harmful_ingredients_detected": ["Ingredient name", ...]
-  },
-  "food_details": {
-    "sugar_analysis": "High | Medium | Low",
-    "fat_analysis": "High | Medium | Low",
-    "sodium_analysis": "High | Medium | Low",
-    "diabetes_friendly": true,
-    "weight_loss_friendly": true,
-    "harmful_additives": ["Additive name", ...]
-  },
-  "medicine_details": {
-    "strength": "e.g. 500 mg",
-    "uses": ["Use 1", ...],
-    "side_effects": {
-      "common": ["Nausea", ...],
-      "serious": ["Severe weakness", ...]
-    },
-    "personalized_warnings": ["Warning 1", ...],
-    "drug_interactions": [
-      { "drug_a": "Metformin", "drug_b": "Ibuprofen", "severity": "Danger|Warning", "description": "Details..." }
-    ],
-    "safety_flags": {
-      "allergy_risk": "None | High | Moderate",
-      "pregnancy_warning": "Safe | Caution | Contraindicated",
-      "kidney_liver_caution": "Safe | Caution | Contraindicated",
-      "overdose_risk": "Low | High"
-    }
-  }
-}`;
-
-        if (apiSettings.verbose) {
-          console.log("GEMINI PROMPT:", prompt);
-        }
-
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${apiSettings.model}:generateContent?key=${apiSettings.apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseMimeType: "application/json"
-            }
-          })
-        });
-
-        if (!response.ok) {
-          let errorMsg = `HTTP Error status: ${response.status}`;
-          try {
-            const errJson = await response.json();
-            if (errJson.error && errJson.error.message) {
-              errorMsg += ` - ${errJson.error.message}`;
-            } else {
-              errorMsg += `. Please check your API key or quota.`;
-            }
-          } catch(e) {
-            errorMsg += `. Please check your API key or quota.`;
-          }
-          throw new Error(errorMsg);
-        }
-
-        const json = await response.json();
-        const rawText = json.candidates[0].content.parts[0].text;
-        
-        if (apiSettings.verbose) {
-          console.log("GEMINI TEXT RESPONSE:", rawText);
-        }
-
-        const parsed = JSON.parse(rawText);
-        
-        // Ensure alternatives are present
-        if (parsed.better_alternatives) {
-          parsed.better_alternatives = parsed.better_alternatives.map((alt, idx) => {
-            return {
-              name: alt.name || alt.product_name || `Alternative ${idx + 1}`,
-              desc: alt.desc || alt.description || "A compatible natural replacement.",
-              score: alt.safety_score ? alt.safety_score.toString() : "9.0",
-              price: alt.price || "$9.99",
-              image: alt.image || (category === 'food' ? "/cereal_label.png" : category === 'cosmetics' ? "/cosmetic_label.png" : "/medicine_label.png"),
-              tags: alt.tags || ["SAFE", "COMPATIBLE"]
-            };
-          });
-        }
-
+        updateLoadingStatus('Connecting to Gemini AI Studio...');
+        const parsed = await analyzeProductWithLangchain(category, userProfile, apiSettings, queryText, null, null, compareText);
+        normalizeAlternatives(parsed, category);
         setResultsData(parsed);
         addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, category);
-        
-        setLoadingActive(false);
+        stopLoading();
         switchView('results');
-
       } catch (err) {
         console.error(err);
-        setLoadingActive(false);
-        alert("AI Search Failed: " + err.message);
+        stopLoading();
+        alert('AI Search Failed: ' + err.message);
       }
     }
-  };
+  }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView]);
 
   if (authLoading) {
     return (
@@ -606,10 +379,6 @@ You must return the results strictly as a raw JSON object without any markdown f
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
-  }
-
-  if (!currentUser) {
-    return <LoginView />;
   }
 
   return (
@@ -622,13 +391,14 @@ You must return the results strictly as a raw JSON object without any markdown f
         currentView={currentView} 
         switchView={switchView} 
         userProfile={userProfile}
+        currentUser={currentUser}
       />
 
       {/* Main content view column */}
       <div className="flex-grow md:ml-[260px] flex flex-col min-h-screen pb-[72px] md:pb-0">
         
         {/* Header */}
-        <Header switchView={switchView} />
+        <Header switchView={switchView} currentUser={currentUser} />
 
         {/* View content panel */}
         <main className="flex-grow p-6 max-w-[1200px] w-full mx-auto flex flex-col gap-6">
@@ -664,10 +434,20 @@ You must return the results strictly as a raw JSON object without any markdown f
           )}
 
           {currentView === 'profile' && (
-            <ProfileView 
-              userProfile={userProfile} 
-              saveProfile={saveProfile} 
-            />
+            currentUser ? (
+              <ProfileView 
+                userProfile={userProfile} 
+                saveProfile={saveProfile} 
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 gap-4 animate-[fadeIn_0.4s_ease]">
+                <span className="material-symbols-outlined text-6xl text-on-surface-variant/40">lock</span>
+                <p className="text-on-surface-variant text-sm">Sign in to access your Health Profile</p>
+                <button onClick={() => switchView('login')} className="bg-primary text-white font-bold py-3 px-8 rounded-xl text-sm hover:bg-primary-container shadow-md transition-colors cursor-pointer">
+                  Log In
+                </button>
+              </div>
+            )
           )}
 
           {currentView === 'settings' && (
@@ -675,6 +455,10 @@ You must return the results strictly as a raw JSON object without any markdown f
               apiSettings={apiSettings} 
               saveSettings={saveSettings} 
             />
+          )}
+
+          {currentView === 'login' && (
+            <LoginView onSuccess={() => switchView('home')} />
           )}
         </main>
 
@@ -699,9 +483,9 @@ You must return the results strictly as a raw JSON object without any markdown f
 
       {/* 3. Loading Overlay */}
       <LoadingOverlay 
-        active={loadingActive} 
-        title={loadingTitle} 
-        status={loadingStatus} 
+        active={loading.active} 
+        title={loading.title} 
+        status={loading.status} 
       />
     </div>
   );

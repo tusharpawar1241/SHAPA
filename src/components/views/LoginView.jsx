@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { auth } from '../../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
-export default function LoginView() {
+export default function LoginView({ onSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +20,7 @@ export default function LoginView() {
       } else {
         await createUserWithEmailAndPassword(auth, email, password);
       }
+      if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Auth Error:", err);
       setError(err.message);
@@ -34,6 +35,7 @@ export default function LoginView() {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
+      if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Google Auth Error:", err);
       setError(err.message);

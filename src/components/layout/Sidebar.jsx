@@ -1,16 +1,6 @@
 import React from 'react';
-import { auth } from '../../firebase';
-import { signOut } from 'firebase/auth';
-export default function Sidebar({ currentView, switchView, userProfile }) {
-  const getInitials = (name) => {
-    if (!name) return 'JD';
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .substring(0, 2)
-      .toUpperCase();
-  };
+
+export default function Sidebar({ currentView, switchView }) {
 
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home' },
@@ -52,25 +42,6 @@ export default function Sidebar({ currentView, switchView, userProfile }) {
           );
         })}
       </nav>
-
-      <div className="mt-auto p-4 bg-surface-container-low rounded-xl border border-outline-variant/30 flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-primary-fixed text-on-primary-fixed flex items-center justify-center font-bold text-[13px]">
-            {getInitials(userProfile?.name)}
-          </div>
-          <div className="overflow-hidden">
-            <p className="text-[13px] font-bold truncate text-on-surface">{userProfile?.name}</p>
-            <p className="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Premium Member</p>
-          </div>
-        </div>
-        <button 
-          onClick={() => signOut(auth)}
-          className="w-full text-left flex items-center gap-2 text-xs text-on-surface-variant hover:text-error transition-colors mt-2"
-        >
-          <span className="material-symbols-outlined text-[16px]">logout</span>
-          Sign Out
-        </button>
-      </div>
     </aside>
   );
 }
