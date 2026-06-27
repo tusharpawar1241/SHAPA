@@ -1,13 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function ResultsView({ resultsData, activeCategory, switchView }) {
   const [activeAccordion, setActiveAccordion] = useState(null);
   const [scoreCount, setScoreCount] = useState(0);
 
+  // Sync / Reset score count when resultsData changes during render phase
+  const [prevResultsData, setPrevResultsData] = useState(resultsData);
+  if (resultsData !== prevResultsData) {
+    setPrevResultsData(resultsData);
+    setScoreCount(0);
+  }
+
   // Animates the score counting up on enter
   useEffect(() => {
     if (resultsData && resultsData.safety_score !== undefined) {
-      setScoreCount(0);
       const target = parseFloat(resultsData.safety_score) || 0;
       let count = 0;
       const duration = 1000; // 1 second

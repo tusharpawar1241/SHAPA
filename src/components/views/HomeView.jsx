@@ -1,64 +1,22 @@
-import React from 'react';
-
-export default function HomeView({ switchView, selectCategory, userProfile }) {
+export default function HomeView({ 
+  switchView, 
+  selectCategory, 
+  userProfile, 
+  scanHistory, 
+  viewHistoryItem, 
+  clearHistory 
+}) {
   
   const handleCardClick = (category) => {
     selectCategory(category);
     switchView('scan');
   };
 
-  // Compile active goals from user profile
-  const compileGoals = () => {
-    const goals = [];
-    
-    if (userProfile.dietary_goals.gluten_free || userProfile.dietary_goals.dairy_free || userProfile.dietary_goals.nut_free) {
-      let allergens = [];
-      if (userProfile.dietary_goals.gluten_free) allergens.push("Gluten");
-      if (userProfile.dietary_goals.dairy_free) allergens.push("Dairy");
-      if (userProfile.dietary_goals.nut_free) allergens.push("Nuts");
-      
-      goals.push({
-        title: "Allergen Free",
-        statusText: userProfile.dietary_goals.nut_free ? "Critical Watch" : "Active Check",
-        statusClass: "text-primary",
-        colorClass: "bg-primary",
-        percent: 85,
-        desc: `Avoiding: ${allergens.join(', ')}`
-      });
-    }
-
-    if (userProfile.dietary_goals.low_sugar) {
-      goals.push({
-        title: "Sugar Restriction",
-        statusText: "Strict Limit",
-        statusClass: "text-secondary",
-        colorClass: "bg-secondary",
-        percent: 95,
-        desc: "Avoiding High Fructose Corn Syrup & excess added sugar"
-      });
-    }
-
-    if (userProfile.medical_profile.conditions.hypertension) {
-      goals.push({
-        title: "Cardio Integrity",
-        statusText: "Hypertension Rules",
-        statusClass: "text-tertiary",
-        colorClass: "bg-tertiary",
-        percent: 100,
-        desc: `Avoiding Caffeine and drug interactions with Lisinopril`
-      });
-    }
-
-    return goals;
-  };
-
-  const activeGoals = compileGoals();
-
   return (
     <div className="animate-[fadeIn_0.4s_ease]">
       <div className="mb-8">
         <p className="text-[11px] uppercase tracking-wider text-on-surface-variant font-semibold mb-1">
-          Welcome back, {userProfile.name.split(' ')[0]}
+          Welcome back, {userProfile?.name?.split(' ')[0] || "User"}
         </p>
         <h2 className="text-3xl font-extrabold text-on-surface leading-tight">Protect your health.</h2>
         <p className="text-sm text-on-surface-variant mt-1">
@@ -127,46 +85,78 @@ export default function HomeView({ switchView, selectCategory, userProfile }) {
       {/* Bottom Grid: Profile Goals & Insights */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* Profile Goals Summary */}
-        <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-          <div className="flex justify-between items-center mb-6">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-              Active Goals Match
+        {/* Scan History & Logs */}
+        <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)] flex flex-col h-[320px]">
+          <div className="flex justify-between items-center mb-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>history</span>
+              <span>Recent Scan Logs</span>
             </h4>
-            <button 
-              onClick={() => switchView('profile')}
-              className="text-primary hover:bg-primary/10 p-1.5 rounded-full transition-colors"
-              title="Edit Profile"
-            >
-              <span className="material-symbols-outlined">settings</span>
-            </button>
+            {scanHistory && scanHistory.length > 0 && (
+              <button 
+                onClick={() => { if (confirm("Clear all scan logs?")) clearHistory(); }}
+                className="text-[10px] text-error hover:bg-error/10 px-2 py-1 rounded transition-colors font-bold border-none bg-transparent cursor-pointer"
+                title="Clear Logs"
+              >
+                Clear All
+              </button>
+            )}
           </div>
 
-          <div className="flex flex-col gap-5">
-            {activeGoals.length === 0 ? (
-              <p className="text-xs text-on-surface-variant text-center py-6">
-                No active restrictions set. Edit your health profile to customize goals.
-              </p>
+          <div className="flex-grow overflow-y-auto flex flex-col gap-3 pr-1 custom-scrollbar">
+            {!scanHistory || scanHistory.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-6 gap-2">
+                <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">receipt_long</span>
+                <p className="text-xs text-on-surface-variant">
+                  No recent scans. Select a category above to start.
+                </p>
+              </div>
             ) : (
-              activeGoals.map((g, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span className="text-on-surface">{g.title}</span>
-                    <span className={g.statusClass}>{g.statusText}</span>
-                  </div>
-                  <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${g.colorClass}`} style={{ width: `${g.percent}%` }}></div>
-                  </div>
-                  <p className="text-[11px] text-on-surface-variant">{g.desc}</p>
-                </div>
-              ))
+              scanHistory.map((item, idx) => {
+                // Determine safety color
+                const score = parseFloat(item.safety_score) || 0;
+                let badgeBg = "bg-green-100 text-green-800";
+                if (score < 4.0) {
+                  badgeBg = "bg-red-100 text-red-800";
+                } else if (score < 7.0) {
+                  badgeBg = "bg-orange-100 text-orange-800";
+                }
+
+                // Determine category icon
+                let catIcon = "restaurant";
+                if (item.category === "medicine") catIcon = "medication";
+                else if (item.category === "cosmetics") catIcon = "science";
+
+                return (
+                  <button 
+                    key={idx}
+                    onClick={() => viewHistoryItem(idx)}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-outline-variant/30 hover:border-primary hover:bg-primary/5 transition-all text-left cursor-pointer bg-transparent"
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden flex-grow pr-3">
+                      <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant flex-shrink-0">
+                        <span className="material-symbols-outlined text-[18px]">{catIcon}</span>
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold truncate text-on-surface">{item.product_name}</p>
+                        <p className="text-[10px] text-on-surface-variant truncate">
+                          {item.brand_name || "Unknown Brand"} • {item.timestamp?.split(',')[0] || "Just now"}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${badgeBg} flex-shrink-0`}>
+                      {score.toFixed(1)} / 10
+                    </span>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
         {/* Daily Insight Card */}
-        <div className="glass-card rounded-2xl p-6 flex gap-4 items-start shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-          <span className="material-symbols-outlined text-tertiary-container text-4xl flex-shrink-0">
+        <div className="glass-card rounded-2xl p-6 flex gap-4 items-start shadow-[0_4px_12px_rgba(0,0,0,0.02)] h-[320px] overflow-y-auto">
+          <span className="material-symbols-outlined text-tertiary text-4xl flex-shrink-0">
             lightbulb
           </span>
           <div>

@@ -1,18 +1,14 @@
-import React from 'react';
-
 export default function Sidebar({ currentView, switchView }) {
 
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home' },
-    { id: 'scan', label: 'Analyze & Scan', icon: 'analytics' },
-    { id: 'profile', label: 'Health Profile', icon: 'person' },
-    { id: 'settings', label: 'Settings', icon: 'settings' }
+    { id: 'profile', label: 'Health Profile', icon: 'person' }
   ];
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-[260px] bg-surface-container-lowest border-r border-outline-variant/30 flex flex-col p-6 z-50 hidden md:flex">
       <div className="flex items-center gap-4 mb-8 px-2 py-1">
-        <div className="w-[42px] height-[42px] aspect-square rounded-xl bg-primary flex items-center justify-center text-on-primary">
+        <div className="w-[42px] h-[42px] aspect-square rounded-xl bg-primary flex items-center justify-center text-on-primary">
           <span className="material-symbols-outlined text-[26px]" style={{ fontVariationSettings: "'FILL' 1" }}>
             shield_watch
           </span>
@@ -42,6 +38,7 @@ export default function Sidebar({ currentView, switchView }) {
           );
         })}
       </nav>
+
     </aside>
   );
 }

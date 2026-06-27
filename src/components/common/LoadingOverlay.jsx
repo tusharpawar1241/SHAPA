@@ -1,4 +1,3 @@
-import React from 'react';
 
 export default function LoadingOverlay({ active, title, status }) {
   if (!active) return null;

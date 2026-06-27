@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { auth } from '../../firebase';
 import { signOut } from 'firebase/auth';
 
@@ -60,21 +60,6 @@ export default function Header({ switchView, currentUser }) {
                   <p className="text-[11px] text-on-surface-variant truncate">{currentUser.email}</p>
                 </div>
 
-                {/* Menu Items */}
-                <button
-                  onClick={() => { setDropdownOpen(false); switchView('profile'); }}
-                  className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">person</span>
-                  Health Profile
-                </button>
-                <button
-                  onClick={() => { setDropdownOpen(false); switchView('settings'); }}
-                  className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">settings</span>
-                  Settings
-                </button>
 
                 <div className="border-t border-outline-variant/20 mt-1 pt-1">
                   <button

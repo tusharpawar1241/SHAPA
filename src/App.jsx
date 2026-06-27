@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
@@ -6,7 +6,6 @@ import HomeView from './components/views/HomeView';
 import ScanView from './components/views/ScanView';
 import ResultsView from './components/views/ResultsView';
 import ProfileView from './components/views/ProfileView';
-import SettingsView from './components/views/SettingsView';
 import LoadingOverlay from './components/common/LoadingOverlay';
 
 import { mockDatabase } from './utils/mockData';
@@ -75,22 +74,10 @@ export default function App() {
     }
   });
 
-  // Default API Settings state
   const envApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-  const [apiSettings, setApiSettings] = useState({
-    mode: envApiKey ? 'gemini' : 'mock',
-    apiKey: envApiKey,
-    model: 'gemini-2.5-flash',
-    verbose: true,
-    haptic: true
-  });
 
-  // History state
-  const [scanHistory, setScanHistory] = useState([]);
-
-  // Load API settings & history on mount
-  useEffect(() => {
-    // We keep API settings in local storage
+  // Default API Settings state
+  const [apiSettings, setApiSettings] = useState(() => {
     const cachedSettings = localStorage.getItem('guardian_api_settings');
     if (cachedSettings) {
       const parsed = JSON.parse(cachedSettings);
@@ -101,32 +88,35 @@ export default function App() {
       if (parsed.model === 'gemini-1.5-flash') {
         parsed.model = 'gemini-2.5-flash';
       }
-      setApiSettings(parsed);
-    } else if (envApiKey) {
-      setApiSettings(prev => ({
-        ...prev,
-        apiKey: envApiKey,
-        mode: 'gemini'
-      }));
+      return parsed;
     }
+    return {
+      mode: envApiKey ? 'gemini' : 'mock',
+      apiKey: envApiKey,
+      model: 'gemini-2.5-flash',
+      verbose: true,
+      haptic: true
+    };
+  });
 
+  // History state
+  const [scanHistory, setScanHistory] = useState(() => {
     const cachedHistory = localStorage.getItem('guardian_scan_history');
     if (cachedHistory) {
-      setScanHistory(JSON.parse(cachedHistory));
-    } else {
-      const defaultHistory = [
-        {
-          product_name: "SuperSweet Cereal",
-          brand_name: "MegaGrain Corp",
-          safety_score: 3.5,
-          category: "food",
-          timestamp: new Date(Date.now() - 3600000 * 2).toLocaleString()
-        }
-      ];
-      setScanHistory(defaultHistory);
-      localStorage.setItem('guardian_scan_history', JSON.stringify(defaultHistory));
+      return JSON.parse(cachedHistory);
     }
-  }, []);
+    const defaultHistory = [
+      {
+        product_name: "SuperSweet Cereal",
+        brand_name: "MegaGrain Corp",
+        safety_score: 3.5,
+        category: "food",
+        timestamp: new Date(Date.now() - 3600000 * 2).toLocaleString()
+      }
+    ];
+    localStorage.setItem('guardian_scan_history', JSON.stringify(defaultHistory));
+    return defaultHistory;
+  });
 
   // Firebase Auth Listener
   // BUG FIX: removed `userProfile` from dependency array — it caused an infinite loop
@@ -171,7 +161,6 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const switchView = useCallback((viewName) => setCurrentView(viewName), []);
@@ -326,7 +315,7 @@ export default function App() {
         alert('AI Analysis Failed: ' + err.message);
       }
     }
-  }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView]);
+  }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView, showToast]);
 
   // Gemini API text search caller
   const analyzeTextQuery = useCallback(async (queryText, compareText, activeCategoryOverride) => {
@@ -405,7 +394,7 @@ export default function App() {
         alert('AI Search Failed: ' + err.message);
       }
     }
-  }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView]);
+  }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView, showToast]);
 
   if (authLoading) {
     return (
@@ -424,8 +413,6 @@ export default function App() {
       <Sidebar 
         currentView={currentView} 
         switchView={switchView} 
-        userProfile={userProfile}
-        currentUser={currentUser}
       />
 
       {/* Main content view column */}
@@ -441,6 +428,9 @@ export default function App() {
               switchView={switchView} 
               selectCategory={selectCategory} 
               userProfile={userProfile} 
+              scanHistory={scanHistory}
+              viewHistoryItem={viewHistoryItem}
+              clearHistory={clearHistory}
             />
           )}
 
@@ -473,6 +463,8 @@ export default function App() {
                 userProfile={userProfile} 
                 saveProfile={saveProfile} 
                 showToast={showToast}
+                apiSettings={apiSettings}
+                saveSettings={saveSettings}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 gap-4 animate-[fadeIn_0.4s_ease]">
@@ -488,13 +480,6 @@ export default function App() {
                 </div>
               </div>
             )
-          )}
-
-          {currentView === 'settings' && (
-            <SettingsView 
-              apiSettings={apiSettings} 
-              saveSettings={saveSettings} 
-            />
           )}
 
           {currentView === 'login' && (

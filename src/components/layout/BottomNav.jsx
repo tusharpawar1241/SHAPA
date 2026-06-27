@@ -1,16 +1,14 @@
-import React from 'react';
 
 export default function BottomNav({ currentView, switchView }) {
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home' },
-    { id: 'scan', label: 'Scan', icon: 'analytics' },
     { id: 'profile', label: 'Profile', icon: 'person' }
   ];
 
   return (
     <nav className="fixed bottom-0 left-0 w-full h-[72px] bg-surface-container-lowest border-t border-outline-variant/30 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] flex justify-around items-center z-50 pb-3 md:hidden">
       {navItems.map(item => {
-        const isActive = currentView === item.id || (item.id === 'scan' && currentView === 'results');
+        const isActive = currentView === item.id;
         return (
           <button
             key={item.id}

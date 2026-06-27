@@ -1,7 +1,6 @@
-import React from 'react';
-import { Award, User, Stethoscope, Droplet, Coffee, Heart } from 'lucide-react';
+import { Award, User, Stethoscope, Droplet, Coffee } from 'lucide-react';
 
-export default function ProgressSidebar({ completion, userProfile }) {
+export default function ProgressSidebar({ completion }) {
   // SVG properties for circular progress
   const radius = 34;
   const circumference = 2 * Math.PI * radius;

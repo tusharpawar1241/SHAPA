@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 export default function ScanView({ 
   activeCategory, 
@@ -21,7 +21,7 @@ export default function ScanView({
   const [indicatorColor, setIndicatorColor] = useState("text-on-surface-variant");
   const [imagePreview, setImagePreview] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [stream, setStream] = useState(null);
+  const streamRef = useRef(null);
 
   // Search tabs & inputs state
   const [activeTab, setActiveTab] = useState('scan'); // 'scan' or 'search'
@@ -31,7 +31,30 @@ export default function ScanView({
   const [compareMedicine, setCompareMedicine] = useState('');
   const [isCameraViewOpen, setIsCameraViewOpen] = useState(false);
 
-  const startCamera = async () => {
+  // Sync / Reset local form state when activeCategory changes during render phase
+  const [prevCategory, setPrevCategory] = useState(activeCategory);
+  if (activeCategory !== prevCategory) {
+    setPrevCategory(activeCategory);
+    setImagePreview(null);
+    setSearchName('');
+    setSearchBarcode('');
+    setSearchKeywords('');
+    setCompareMedicine('');
+    setIsCameraViewOpen(false);
+  }
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         stopCamera(); // Stop any existing stream
@@ -39,7 +62,7 @@ export default function ScanView({
           video: { facingMode: 'environment' },
           audio: false
         });
-        setStream(mediaStream);
+        streamRef.current = mediaStream;
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
         }
@@ -57,41 +80,32 @@ export default function ScanView({
       setIndicatorText("Webcam Unsupported. Upload file below.");
       setIndicatorColor("text-[#adc6ff]");
     }
-  };
+  }, [stopCamera]);
 
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraActive(false);
-  };
-
-  // Stop camera when component mounts or activeCategory changes by default
+  // Control live camera feed based on active tab and camera view visibility
   useEffect(() => {
-    if (activeTab === 'scan') {
-      if (isCameraViewOpen) startCamera();
-      else stopCamera();
-    } else {
-      setIsCameraViewOpen(false);
-      stopCamera();
-    }
-    setImagePreview(null);
-    setSearchName('');
-    setSearchBarcode('');
-    setSearchKeywords('');
-    setCompareMedicine('');
+    let active = true;
+    
+    // Defer camera operations to prevent synchronous state updates in render cycle
+    const timer = setTimeout(() => {
+      if (active) {
+        if (activeTab === 'scan' && isCameraViewOpen) {
+          startCamera();
+        } else {
+          stopCamera();
+        }
+      }
+    }, 0);
+
     return () => {
+      active = false;
+      clearTimeout(timer);
       stopCamera();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCategory, activeTab, isCameraViewOpen]);
+  }, [activeTab, isCameraViewOpen, startCamera, stopCamera]);
 
   const triggerShutter = () => {
-    if (cameraActive && stream) {
+    if (cameraActive && streamRef.current) {
       hapticFeedback();
 
       const flash = document.getElementById('flash-screen');
@@ -210,7 +224,14 @@ export default function ScanView({
       {/* Modern Tabs */}
       <div className="flex gap-2 border-b border-outline-variant/30 pb-0.5 mb-6">
         <button 
-          onClick={() => setActiveTab('scan')}
+          onClick={() => {
+            setActiveTab('scan');
+            setImagePreview(null);
+            setSearchName('');
+            setSearchBarcode('');
+            setSearchKeywords('');
+            setCompareMedicine('');
+          }}
           className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all cursor-pointer bg-transparent outline-none border-none ${
             activeTab === 'scan' ? 'border-b-2 border-solid border-primary text-primary font-extrabold' : 'border-b-0 text-on-surface-variant hover:text-on-surface'
           }`}
@@ -219,7 +240,15 @@ export default function ScanView({
           <span>Label Scanner</span>
         </button>
         <button 
-          onClick={() => setActiveTab('search')}
+          onClick={() => {
+            setActiveTab('search');
+            setIsCameraViewOpen(false);
+            setImagePreview(null);
+            setSearchName('');
+            setSearchBarcode('');
+            setSearchKeywords('');
+            setCompareMedicine('');
+          }}
           className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all cursor-pointer bg-transparent outline-none border-none ${
             activeTab === 'search' ? 'border-b-2 border-solid border-primary text-primary font-extrabold' : 'border-b-0 text-on-surface-variant hover:text-on-surface'
           }`}
@@ -362,6 +391,37 @@ export default function ScanView({
                       <span>Scan with Camera</span>
                     </button>
                   )}
+                </div>
+              </div>
+
+              {/* Try with Demo Samples */}
+              <div className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/30 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-primary mb-3 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm font-fill-1">science</span>
+                  <span>Try with Demo Samples</span>
+                </h3>
+                <p className="text-[11px] text-on-surface-variant mb-4">
+                  Select a sample product to simulate a full AI label scan and see personalized warnings.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {samples.map((sample) => (
+                    <button
+                      key={sample.id}
+                      onClick={() => { stopCamera(); triggerMockScan(sample.id); }}
+                      className="flex items-center gap-3 p-3 border border-outline-variant/30 rounded-xl hover:border-primary hover:bg-primary/5 transition-all text-left cursor-pointer bg-transparent"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+                        <span className="material-symbols-outlined text-[20px]">
+                          {activeCategory === 'food' ? 'restaurant' : activeCategory === 'cosmetics' ? 'science' : 'medication'}
+                        </span>
+                      </div>
+                      <div className="overflow-hidden flex-grow">
+                        <p className="text-xs font-bold truncate text-on-surface">{sample.product_name}</p>
+                        <p className="text-[10px] text-on-surface-variant truncate">{sample.brand_name}</p>
+                      </div>
+                      <span className="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </>

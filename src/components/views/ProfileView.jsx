@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  User, Stethoscope, Droplet, Coffee, Heart, Activity, Code, Clipboard, CheckCircle, 
-  HeartPulse, Sparkles, AlertCircle, RefreshCw, Scissors, Target, BellRing, Navigation
+  User, Stethoscope, Droplet, Coffee, Heart, 
+  HeartPulse, Sparkles, RefreshCw, Scissors, Target, BellRing
 } from 'lucide-react';
 import ProgressSidebar from '../common/ProgressSidebar';
 
-export default function ProfileView({ userProfile, saveProfile, showToast }) {
+export default function ProfileView({ userProfile, saveProfile, showToast, apiSettings, saveSettings }) {
   // general
   const [name, setName] = useState('');
   const [age, setAge] = useState(35);
@@ -100,14 +100,33 @@ export default function ProfileView({ userProfile, saveProfile, showToast }) {
   const [notifySkinIrritants, setNotifySkinIrritants] = useState(true);
   const [notifyHealthTips, setNotifyHealthTips] = useState(true);
 
-  // JSON view
-  const [jsonText, setJsonText] = useState('');
-  const [jsonEditing, setJsonEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // API Settings integration
+  const [mode, setMode] = useState(apiSettings?.mode || 'mock');
+  const [apiKey, setApiKey] = useState(apiSettings?.apiKey || '');
+  const [model, setModel] = useState(apiSettings?.model === 'gemini-1.5-flash' ? 'gemini-2.5-flash' : (apiSettings?.model || 'gemini-2.5-flash'));
+  const [verbose, setVerbose] = useState(apiSettings?.verbose !== false);
+  const [haptic, setHaptic] = useState(apiSettings?.haptic !== false);
+
+  // Sync / Reset settings state when apiSettings changes during render phase
+  const [prevApiSettings, setPrevApiSettings] = useState(apiSettings);
+  if (apiSettings !== prevApiSettings) {
+    setPrevApiSettings(apiSettings);
+    if (apiSettings) {
+      setMode(apiSettings.mode || 'mock');
+      setApiKey(apiSettings.apiKey || '');
+      setModel(apiSettings.model === 'gemini-1.5-flash' ? 'gemini-2.5-flash' : (apiSettings.model || 'gemini-2.5-flash'));
+      setVerbose(apiSettings.verbose !== false);
+      setHaptic(apiSettings.haptic !== false);
+    }
+  }
 
   // Sync inputs with userProfile prop on mount/change
   useEffect(() => {
-    if (userProfile) {
+    if (!userProfile) return;
+
+    const timer = setTimeout(() => {
       setName(userProfile.name || '');
       setAge(userProfile.age || 35);
       setGender(userProfile.gender || 'male');
@@ -151,9 +170,9 @@ export default function ProfileView({ userProfile, saveProfile, showToast }) {
       setGlutenIntolerance(!!userProfile.medical_profile?.conditions?.gluten_intolerance);
       
       setCurrentMeds((userProfile.medical_profile?.current_medications || []).join(', '));
+    }, 0);
 
-      setJsonText(JSON.stringify(userProfile, null, 2));
-    }
+    return () => clearTimeout(timer);
   }, [userProfile]);
 
   // Calculate profile completion percentage
@@ -361,57 +380,100 @@ export default function ProfileView({ userProfile, saveProfile, showToast }) {
 
     setTimeout(() => {
       saveProfile(updated);
+      if (saveSettings) {
+        saveSettings({
+          mode,
+          apiKey: apiKey.trim(),
+          model,
+          verbose,
+          haptic
+        });
+      }
       setIsSaving(false);
-      if (showToast) showToast("Profile saved successfully!", "success");
+      if (showToast) showToast("Profile and configurations saved successfully!", "success");
     }, 1200);
   };
 
-  const handleJsonAction = () => {
-    if (jsonEditing) {
-      try {
-        const parsed = JSON.parse(jsonText);
-        saveProfile(parsed);
-        setJsonEditing(false);
-        if (showToast) showToast("JSON parsed and profile updated successfully!", "success");
-      } catch (err) {
-        if (showToast) showToast("Invalid JSON format: " + err.message, "error");
-      }
-    } else {
-      setJsonEditing(true);
-    }
-  };
-
-  const copyJson = () => {
-    navigator.clipboard.writeText(jsonText).then(() => {
-      if (showToast) showToast("Profile JSON copied to clipboard!", "success");
-    });
-  };
 
   const resetForm = () => {
-    setName('');
-    setAge(35);
-    setGender('male');
-    setAllergies('');
-    setGluten(false);
-    setDairy(false);
-    setNuts(false);
-    setSoy(false);
-    setSugar(false);
-    setOrganic(false);
-    setWeightLoss(false);
-    setSkinType('sensitive');
-    setSkinConcerns([]);
-    setAvoidFragrance(false);
-    setAvoidParabens(false);
-    setAvoidSulfates(false);
-    setAvoidSilicone(false);
-    setHypertension(false);
-    setPregnancy(false);
-    setDiabetes(false);
-    setKidney(false);
-    setHeartDisease(false);
-    setCurrentMeds('');
-    if (showToast) showToast("Form cleared to defaults.", "info");
+    if (confirm("Reset health profile and settings to defaults?")) {
+      setName('');
+      setAge(35);
+      setGender('male');
+      setAllergies('');
+      setGluten(false);
+      setDairy(false);
+      setNuts(false);
+      setSoy(false);
+      setSugar(false);
+      setOrganic(false);
+      setWeightLoss(false);
+      
+      setSkinType('sensitive');
+      setSkinTone('medium');
+      setSkinConcerns([]);
+      setSkinConcernsNone(false);
+      
+      setAvoidCosmetics('');
+      setAvoidFragrance(false);
+      setAvoidParabens(false);
+      setAvoidSulfates(false);
+      setAvoidAlcohol(false);
+      setAvoidEssentialOils(false);
+      setAvoidLanolin(false);
+      setAvoidNickel(false);
+      setAvoidFormaldehyde(false);
+      setAvoidArtificialColors(false);
+      setAvoidSilicone(false);
+      setAvoidMineralOil(false);
+      setCosmeticNone(false);
+
+      setHairType('straight');
+      setHairConcerns([]);
+      setHairConcernsNone(false);
+
+      setWeightGainGoal(false);
+      setMuscleBuildingGoal(false);
+      setHealthyEatingGoal(false);
+      setBetterSkinGoal(false);
+      setAcneReductionGoal(false);
+      setAntiAgingGoal(false);
+      setHairCareGoal(false);
+      setDiabetesManagementGoal(false);
+      setHeartHealthGoal(false);
+      setAllergySafeGoal(false);
+
+      setHypertension(false);
+      setPregnancy(false);
+      setDiabetes(false);
+      setKidney(false);
+      setHeartDisease(false);
+      setThyroid(false);
+      setAsthma(false);
+      setPcos(false);
+      setLactoseIntolerance(false);
+      setGlutenIntolerance(false);
+      setMedicalNone(false);
+      setCurrentMeds('');
+
+      setNotifyHarmful(true);
+      setNotifyFoodAllergens(true);
+      setNotifyCosmeticAllergens(true);
+      setNotifyRecalls(true);
+      setNotifyHighSugar(true);
+      setNotifyHighSodium(true);
+      setNotifySkinIrritants(true);
+      setNotifyHealthTips(true);
+
+      // Reset integrated settings
+      setMode('mock');
+      setApiKey('');
+      setModel('gemini-2.5-flash');
+      setVerbose(true);
+      setHaptic(true);
+
+      if (showToast) showToast("Form cleared to defaults.", "info");
+    }
   };
 
   return (
@@ -1012,6 +1074,71 @@ export default function ProfileView({ userProfile, saveProfile, showToast }) {
               </div>
             </div>
 
+            {/* SECTION 11: Gemini AI Settings */}
+            <div className="flex flex-col gap-4 border-t border-outline-variant/30 pt-6">
+              <h3 className="text-sm font-extrabold text-primary flex items-center gap-1.5 uppercase tracking-wider">
+                <span className="material-symbols-outlined text-[18px]">auto_awesome</span> Gemini AI Configuration
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                
+                {/* Operation Mode */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface">Operation Mode</label>
+                  <select 
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 bg-white rounded-xl outline-none text-xs focus:border-primary transition-all cursor-pointer"
+                  >
+                    <option value="mock">Simulated Mode (Mock Data - Offline)</option>
+                    <option value="gemini">Gemini API Mode (Real AI Label Analysis)</option>
+                  </select>
+                  <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                    Choose whether to run on mock rules or call Google's live Gemini models.
+                  </p>
+                </div>
+
+                {/* Gemini Model */}
+                {mode === 'gemini' && (
+                  <div className="flex flex-col gap-1.5 animate-[fadeIn_0.2s_ease]">
+                    <label className="text-xs font-semibold text-on-surface">Gemini LLM Model</label>
+                    <select 
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="w-full p-3 border border-outline-variant/50 bg-white rounded-xl outline-none text-xs focus:border-primary transition-all cursor-pointer"
+                    >
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended - Fast)</option>
+                      <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning)</option>
+                    </select>
+                  </div>
+                )}
+                
+              </div>
+
+              {/* Gemini API Key */}
+              {mode === 'gemini' && (
+                <div className="flex flex-col gap-1.5 animate-[fadeIn_0.2s_ease]">
+                  <label className="text-xs font-semibold text-on-surface flex items-center justify-between">
+                    <span>Gemini API Key</span>
+                    <a 
+                      href="https://aistudio.google.com/" 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="text-[10px] text-primary hover:underline font-bold"
+                    >
+                      Get Key from Google AI Studio
+                    </a>
+                  </label>
+                  <input 
+                    type="password" 
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="w-full p-3 border border-outline-variant/50 rounded-xl outline-none text-xs focus:border-primary focus:ring-1 focus:ring-primary transition-all bg-white"
+                    placeholder="Paste your Gemini API Key here (AIzaSy...)"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Form Actions */}
             <div className="flex gap-4 pt-4 border-t border-outline-variant/30">
               <button 
@@ -1033,44 +1160,7 @@ export default function ProfileView({ userProfile, saveProfile, showToast }) {
           </form>
         </div>
 
-        {/* SECTION 11: Raw JSON Panel */}
-        <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-4">
-          <div className="flex justify-between items-center border-b border-outline-variant/30 pb-3">
-            <h3 className="text-sm font-extrabold text-on-surface flex items-center gap-1.5 uppercase tracking-wider">
-              <Code size={18} className="text-primary" /> Raw JSON Profile
-            </h3>
-            <span className="text-[10px] text-on-surface-variant font-medium">Exact payload sent to AI model</span>
-          </div>
-          <p className="text-[10px] text-on-surface-variant mt-[-8px]">
-            View and directly update the backing profile data structure.
-          </p>
-          <textarea 
-            value={jsonText}
-            onChange={(e) => setJsonText(e.target.value)}
-            readOnly={!jsonEditing}
-            className={`font-mono text-[10px] w-full h-[320px] p-4 border border-outline-variant rounded-xl outline-none resize-none transition-all ${
-              jsonEditing ? 'bg-white border-primary ring-1 ring-primary' : 'bg-surface-container-low text-on-surface-variant'
-            }`}
-          ></textarea>
-          <div className="flex gap-3">
-            <button 
-              onClick={copyJson}
-              className="flex-1 border border-outline px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-surface-container-low transition-colors text-center cursor-pointer bg-transparent text-on-surface"
-            >
-              Copy JSON
-            </button>
-            <button 
-              onClick={handleJsonAction}
-              className={`flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-center cursor-pointer transition-all ${
-                jsonEditing 
-                  ? 'bg-primary text-white hover:bg-primary/90' 
-                  : 'border border-outline hover:bg-surface-container-low bg-transparent text-on-surface'
-              }`}
-            >
-              {jsonEditing ? 'Save Raw JSON' : 'Edit Raw JSON'}
-            </button>
-          </div>
-        </div>
+
 
       </div>
     </div>
