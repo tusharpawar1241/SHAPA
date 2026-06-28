@@ -1,25 +1,32 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
+import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Allows overriding config via environment variables, falling back to defaults
 const firebaseConfig = {
-  apiKey: "AIzaSyC7AfOLir6sczd58xv5RizBHwy-WM20qDg",
-  authDomain: "shapa-e2622.firebaseapp.com",
-  projectId: "shapa-e2622",
-  storageBucket: "shapa-e2622.firebasestorage.app",
-  messagingSenderId: "185139372742",
-  appId: "1:185139372742:web:edcf55cc7e97c20079adc7",
-  measurementId: "G-SE9M0QQ429"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyC7AfOLir6sczd58xv5RizBHwy-WM20qDg",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "shapa-e2622.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "shapa-e2622",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "shapa-e2622.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "185139372742",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:185139372742:web:edcf55cc7e97c20079adc7",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-SE9M0QQ429"
 };
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
-export const analytics = getAnalytics(app);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Safe-guard analytics initialization to avoid crashes in restricted environments/headless browsers
+export let analytics;
+isSupported().then((supported) => {
+  if (supported) {
+    analytics = getAnalytics(app);
+  }
+}).catch((err) => {
+  console.warn("Firebase Analytics is not supported in this environment:", err);
+});
