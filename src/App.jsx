@@ -14,7 +14,7 @@ import { analyzeProductWithLangchain } from './utils/langchainService';
 
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, getDocs, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
 import LoginView from './components/views/LoginView';
 
 export default function App() {
@@ -142,26 +142,57 @@ export default function App() {
               await setDoc(docRef, firestoreProfile);
             }
             setUserProfile(firestoreProfile);
+            if (firestoreProfile.profileCompleted) {
+              setCurrentView(prev => prev === 'login' ? 'home' : prev);
+            } else {
+              setCurrentView('profile');
+            }
           } else {
             // Create default profile in Firestore — use Google account name if available
             const defaultProfile = {
               name: user.displayName || "New User", age: 25, gender: "", allergies: "",
+              profileCompleted: false,
               dietary_goals: { gluten_free: false, dairy_free: false, nut_free: false, soy_free: false, low_sugar: false, organic_only: false, weight_loss: false },
               skin_profile: { skin_type: "normal", skin_concerns: [], avoid_ingredients: [] },
               medical_profile: { conditions: { hypertension: false, pregnancy: false, diabetes: false, kidney_disease: false }, current_medications: [], drug_allergies: [] }
             };
             await setDoc(docRef, defaultProfile);
             setUserProfile(defaultProfile);
+            setCurrentView('profile');
           }
+
+          // Fetch user scans from Firestore
+          const scansCol = collection(db, 'users', user.uid, 'scans');
+          const scansQuery = query(scansCol, orderBy('timestamp', 'desc'), limit(15));
+          const scansSnap = await getDocs(scansQuery);
+          const fetchedScans = scansSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setScanHistory(fetchedScans);
+
         } catch (error) {
-          console.error("Error fetching profile from Firestore:", error);
+          console.error("Error fetching profile or scans from Firestore:", error);
           const cachedProfile = localStorage.getItem('guardian_user_profile');
           if (cachedProfile) {
-            setUserProfile(JSON.parse(cachedProfile));
+            const parsed = JSON.parse(cachedProfile);
+            setUserProfile(parsed);
+            if (parsed.profileCompleted) {
+              setCurrentView(prev => prev === 'login' ? 'home' : prev);
+            } else {
+              setCurrentView('profile');
+            }
+          } else {
+            setCurrentView('profile');
+          }
+
+          // Fallback to local scans cache if offline/query fails
+          const cachedHistory = localStorage.getItem('guardian_scan_history');
+          if (cachedHistory) {
+            setScanHistory(JSON.parse(cachedHistory));
           }
         }
       } else {
         setCurrentUser(null);
+        setCurrentView('login');
+        setScanHistory([]); // Clear history on sign out
       }
       setAuthLoading(false);
     });
@@ -173,6 +204,7 @@ export default function App() {
   const selectCategory = useCallback((category) => setActiveCategory(category), []);
 
   const saveProfile = useCallback(async (updatedProfile) => {
+    const wasIncomplete = !userProfile?.profileCompleted;
     setUserProfile(updatedProfile);
     localStorage.setItem('guardian_user_profile', JSON.stringify(updatedProfile));
     
@@ -184,17 +216,32 @@ export default function App() {
         console.error("Error saving profile to Firestore:", error);
       }
     }
-  }, [currentUser]);
+
+    if (wasIncomplete && updatedProfile.profileCompleted) {
+      setCurrentView('home');
+    }
+  }, [currentUser, userProfile]);
 
   const saveSettings = useCallback((updatedSettings) => {
     setApiSettings(updatedSettings);
     localStorage.setItem('guardian_api_settings', JSON.stringify(updatedSettings));
   }, []);
 
-  const clearHistory = useCallback(() => {
+  const clearHistory = useCallback(async () => {
     setScanHistory([]);
-    localStorage.setItem('guardian_scan_history', JSON.stringify([]));
-  }, []);
+    localStorage.removeItem('guardian_scan_history');
+    if (currentUser) {
+      try {
+        const scansCol = collection(db, 'users', currentUser.uid, 'scans');
+        const scansSnap = await getDocs(scansCol);
+        const deletePromises = scansSnap.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+        showToast("Scan history cleared successfully.", "success");
+      } catch (error) {
+        console.error("Error clearing scan history from Firestore:", error);
+      }
+    }
+  }, [currentUser, showToast]);
 
   const hapticFeedback = useCallback(() => {
     if (apiSettings.haptic && navigator.vibrate) {
@@ -202,20 +249,35 @@ export default function App() {
     }
   }, [apiSettings.haptic]);
 
-  const addToHistory = useCallback((productName, brandName, safetyScore, category) => {
+  const addToHistory = useCallback(async (evaluatedData, category) => {
     const newItem = {
-      product_name: productName || "Unknown Product",
-      brand_name: brandName || "Unknown Brand",
-      safety_score: safetyScore || 0,
+      product_name: evaluatedData.product_name || "Unknown Product",
+      brand_name: evaluatedData.brand_name || "Unknown Brand",
+      safety_score: parseFloat(evaluatedData.safety_score) || 0,
       category,
-      timestamp: new Date().toLocaleString()
+      timestamp: new Date().toISOString(),
+      extracted_ingredients: evaluatedData.extracted_ingredients || [],
+      evaluated_ingredients: evaluatedData.evaluated_ingredients || [],
+      better_alternatives: evaluatedData.better_alternatives || [],
+      disclaimer: evaluatedData.disclaimer || "",
+      safety_status: evaluatedData.safety_status || "unknown"
     };
+
     setScanHistory(prev => {
       const updated = [newItem, ...prev].slice(0, 15);
       localStorage.setItem('guardian_scan_history', JSON.stringify(updated));
       return updated;
     });
-  }, []);
+
+    if (currentUser) {
+      try {
+        const scansCol = collection(db, 'users', currentUser.uid, 'scans');
+        await addDoc(scansCol, newItem);
+      } catch (error) {
+        console.error("Error saving scan to Firestore:", error);
+      }
+    }
+  }, [currentUser]);
 
   // Shared helper to normalize alternatives from Gemini response — avoids code duplication
   const normalizeAlternatives = useCallback((parsed, category) => {
@@ -244,7 +306,7 @@ export default function App() {
       if (item) {
         const evaluated = runRulesEngine(item, activeCategory, userProfile);
         setResultsData(evaluated);
-        addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, activeCategory);
+        addToHistory(evaluated, activeCategory);
         stopLoading();
         switchView('results');
       } else {
@@ -258,23 +320,8 @@ export default function App() {
   const viewHistoryItem = (index) => {
     const logItem = scanHistory[index];
     if (logItem) {
-      const samples = mockDatabase[logItem.category] || [];
-      let dbItem = samples.find(s => s.product_name === logItem.product_name);
-      
-      if (!dbItem) {
-        dbItem = {
-          product_name: logItem.product_name,
-          brand_name: logItem.brand_name,
-          extracted_ingredients: logItem.category === 'food' ? ["Sugar", "Wheat", "Salt"] : logItem.category === 'cosmetics' ? ["Water", "Parabens"] : ["Aspirin"],
-          safety_score: logItem.safety_score,
-          better_alternatives: [],
-          disclaimer: "Archived historical analysis report."
-        };
-      }
-      
       setActiveCategory(logItem.category);
-      const evaluated = runRulesEngine(dbItem, logItem.category, userProfile);
-      setResultsData(evaluated);
+      setResultsData(logItem);
       switchView('results');
     }
   };
@@ -300,7 +347,7 @@ export default function App() {
       }
       normalizeAlternatives(parsed, realCategory);
       setResultsData(parsed);
-      addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
+      addToHistory(parsed, realCategory);
       stopLoading();
       switchView('results');
     } catch (err) {
@@ -331,7 +378,7 @@ export default function App() {
       }
       normalizeAlternatives(parsed, realCategory);
       setResultsData(parsed);
-      addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
+      addToHistory(parsed, realCategory);
       stopLoading();
       switchView('results');
     } catch (err) {
@@ -349,6 +396,69 @@ export default function App() {
     );
   }
 
+  // 1. Unauthenticated users must log in first
+  if (!currentUser && !devPreviewMode) {
+    return (
+      <div className="min-h-screen w-full bg-background text-on-surface">
+        <LoginView onSuccess={() => {
+          // authListener will handle route updates
+        }} />
+        <LoadingOverlay 
+          active={loading.active} 
+          title={loading.title} 
+          status={loading.status} 
+        />
+        <div 
+          className={`fixed bottom-6 right-6 max-w-sm w-max bg-surface-container-highest text-on-surface p-4 rounded-xl shadow-xl border border-outline-variant/30 flex items-center gap-3 transition-all duration-300 z-[100] ${
+            toast.visible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-10 opacity-0 pointer-events-none'
+          }`}
+        >
+          <span className={`material-symbols-outlined ${
+            toast.type === 'error' ? 'text-error' : toast.type === 'success' ? 'text-green-500' : 'text-primary'
+          }`}>
+            {toast.type === 'error' ? 'error' : toast.type === 'success' ? 'check_circle' : 'info'}
+          </span>
+          <p className="text-sm font-medium">{toast.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Authenticated users without a completed health profile must fill the profile first
+  if (currentUser && !userProfile?.profileCompleted && !devPreviewMode) {
+    return (
+      <div className="min-h-screen w-full bg-background text-on-surface flex flex-col">
+        <main className="flex-grow p-6 max-w-[1200px] w-full mx-auto flex flex-col gap-6">
+          <ProfileView 
+            userProfile={userProfile} 
+            saveProfile={saveProfile} 
+            showToast={showToast}
+            apiSettings={apiSettings}
+            saveSettings={saveSettings}
+          />
+        </main>
+        <LoadingOverlay 
+          active={loading.active} 
+          title={loading.title} 
+          status={loading.status} 
+        />
+        <div 
+          className={`fixed bottom-6 right-6 max-w-sm w-max bg-surface-container-highest text-on-surface p-4 rounded-xl shadow-xl border border-outline-variant/30 flex items-center gap-3 transition-all duration-300 z-[100] ${
+            toast.visible ? 'translate-y-0 opacity-100 pointer-events-auto' : 'translate-y-10 opacity-0 pointer-events-none'
+          }`}
+        >
+          <span className={`material-symbols-outlined ${
+            toast.type === 'error' ? 'text-error' : toast.type === 'success' ? 'text-green-500' : 'text-primary'
+          }`}>
+            {toast.type === 'error' ? 'error' : toast.type === 'success' ? 'check_circle' : 'info'}
+          </span>
+          <p className="text-sm font-medium">{toast.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Authenticated users with completed profiles get full app access
   return (
     <div className="flex min-h-screen w-full bg-background text-on-surface">
       {/* Shutter flash screen component */}
@@ -407,28 +517,13 @@ export default function App() {
           )}
 
           {currentView === 'profile' && (
-            (currentUser || devPreviewMode) ? (
-              <ProfileView 
-                userProfile={userProfile} 
-                saveProfile={saveProfile} 
-                showToast={showToast}
-                apiSettings={apiSettings}
-                saveSettings={saveSettings}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center py-16 gap-4 animate-[fadeIn_0.4s_ease]">
-                <span className="material-symbols-outlined text-6xl text-on-surface-variant/40">lock</span>
-                <p className="text-on-surface-variant text-sm">Sign in to access your Health Profile</p>
-                <div className="flex flex-col gap-2 w-full max-w-xs">
-                  <button onClick={() => switchView('login')} className="bg-primary text-white font-bold py-3 px-8 rounded-xl text-sm hover:bg-primary-container shadow-md transition-colors cursor-pointer w-full">
-                    Log In
-                  </button>
-                  <button onClick={() => setDevPreviewMode(true)} className="bg-white border border-outline-variant text-on-surface font-bold py-3 px-8 rounded-xl text-sm hover:bg-surface-container-low transition-colors cursor-pointer w-full">
-                    Dev Preview Mode (No Auth)
-                  </button>
-                </div>
-              </div>
-            )
+            <ProfileView 
+              userProfile={userProfile} 
+              saveProfile={saveProfile} 
+              showToast={showToast}
+              apiSettings={apiSettings}
+              saveSettings={saveSettings}
+            />
           )}
 
           {currentView === 'login' && (

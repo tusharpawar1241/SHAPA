@@ -1,4 +1,16 @@
-export function runRulesEngine(item, category, userProfile) {
+export function runRulesEngine(item, category, rawUserProfile) {
+  // Safe default wrapper for user profile to prevent crashes on null/undefined references
+  const userProfile = {
+    allergies: '',
+    dietary_goals: {},
+    skin_profile: {},
+    medical_profile: {},
+    health_goals: {},
+    age: 35,
+    gender: 'male',
+    ...rawUserProfile
+  };
+
   // Deep clone item so we don't overwrite static mock base
   let cloned = JSON.parse(JSON.stringify(item));
   

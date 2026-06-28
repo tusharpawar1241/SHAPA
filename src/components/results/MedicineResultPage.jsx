@@ -216,8 +216,10 @@ export default function MedicineResultPage({ resultsData, switchView, userProfil
         <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 via-transparent to-transparent pointer-events-none" />
         <div className="flex flex-col sm:flex-row gap-5 relative z-10">
           <div className="flex-shrink-0">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/20 shadow-sm">
-              <img src={resultsData.image || '/medicine_label.png'} alt={resultsData.product_name} className="w-full h-full object-cover" onError={e => { e.target.src = '/medicine_label.png'; }} />
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-primary/10 flex items-center justify-center border border-outline-variant/20 shadow-sm">
+              <span className="material-symbols-outlined text-4xl sm:text-5xl text-primary select-none">
+                medication
+              </span>
             </div>
           </div>
           <div className="flex-1 min-w-0">
@@ -231,7 +233,7 @@ export default function MedicineResultPage({ resultsData, switchView, userProfil
                 {detectedForm}
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-on-surface leading-tight mb-0.5">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-on-surface leading-tight mb-0.5 truncate" title={resultsData.product_name}>
               {resultsData.product_name || 'Unknown Medicine'}
             </h1>
             <p className="text-sm text-on-surface-variant font-medium">{resultsData.brand_name || 'Unknown Brand'}</p>

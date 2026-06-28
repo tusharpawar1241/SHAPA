@@ -140,7 +140,15 @@ export default function HomeView({
                       <div className="overflow-hidden">
                         <p className="text-xs font-bold truncate text-on-surface">{item.product_name}</p>
                         <p className="text-[10px] text-on-surface-variant truncate">
-                          {item.brand_name || "Unknown Brand"} • {item.timestamp?.split(',')[0] || "Just now"}
+                          {item.brand_name || "Unknown Brand"} • {(() => {
+                            if (!item.timestamp) return "Just now";
+                            try {
+                              const d = new Date(item.timestamp);
+                              return isNaN(d.getTime()) ? item.timestamp.split(',')[0] : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            } catch (e) {
+                              return item.timestamp.split(',')[0];
+                            }
+                          })()}
                         </p>
                       </div>
                     </div>

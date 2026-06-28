@@ -289,13 +289,10 @@ export default function FoodResultPage({ resultsData, switchView, userProfile, a
         <div className="flex flex-col sm:flex-row gap-5 relative z-10">
           {/* Product image */}
           <div className="flex-shrink-0">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/20 shadow-sm">
-              <img
-                src={resultsData.image || '/cereal_label.png'}
-                alt={resultsData.product_name}
-                className="w-full h-full object-cover"
-                onError={e => { e.target.src = '/cereal_label.png'; }}
-              />
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-secondary/10 flex items-center justify-center border border-outline-variant/20 shadow-sm">
+              <span className="material-symbols-outlined text-4xl sm:text-5xl text-secondary select-none">
+                restaurant
+              </span>
             </div>
           </div>
           {/* Product info */}
@@ -311,7 +308,7 @@ export default function FoodResultPage({ resultsData, switchView, userProfile, a
                 </span>
               )}
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-on-surface leading-tight mb-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-on-surface leading-tight mb-1 truncate" title={resultsData.product_name}>
               {resultsData.product_name || 'Unknown Product'}
             </h1>
             <p className="text-sm text-on-surface-variant font-medium mb-3">
