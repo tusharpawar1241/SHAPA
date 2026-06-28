@@ -1,9 +1,11 @@
-export default function Sidebar({ currentView, switchView }) {
+export default function Sidebar({ currentView, switchView, apiSettings }) {
 
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home' },
     { id: 'profile', label: 'Health Profile', icon: 'person' }
   ];
+  
+  const isApiMissing = !apiSettings?.apiKey || apiSettings?.mode === 'mock';
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-[260px] bg-surface-container-lowest border-r border-outline-variant/30 flex flex-col p-6 z-50 hidden md:flex">
@@ -26,14 +28,19 @@ export default function Sidebar({ currentView, switchView }) {
             <button
               key={item.id}
               onClick={() => switchView(item.id)}
-              className={`flex items-center gap-4 p-4 rounded-lg text-sm transition-all duration-200 text-left font-medium ${
+              className={`flex items-center justify-between p-4 rounded-lg text-sm transition-all duration-200 text-left font-medium ${
                 isActive
                   ? 'bg-secondary-container text-on-secondary-container font-bold'
                   : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface hover:translate-x-1'
               }`}
             >
-              <span className="material-symbols-outlined">{item.icon}</span>
-              <span>{item.label}</span>
+              <div className="flex items-center gap-4">
+                <span className="material-symbols-outlined">{item.icon}</span>
+                <span>{item.label}</span>
+              </div>
+              {item.id === 'profile' && isApiMissing && (
+                <div className="w-2.5 h-2.5 rounded-full bg-error" title="API connection missing"></div>
+              )}
             </button>
           );
         })}

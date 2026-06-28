@@ -10,7 +10,8 @@ export default function ScanView({
   analyzeBase64Image,
   analyzeTextQuery,
   viewHistoryItem,
-  hapticFeedback
+  hapticFeedback,
+  apiSettings
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -220,6 +221,19 @@ export default function ScanView({
           </p>
         </div>
       </div>
+
+      {/* ── API KEY CONFIGURATION WARNING ── */}
+      {(!apiSettings || apiSettings.mode === 'mock' || !apiSettings.apiKey) && (
+        <div className="mb-6 bg-[#B45309]/8 border-2 border-[#B45309]/30 rounded-3xl p-4 flex items-center gap-3.5 shadow-sm">
+          <span className="material-symbols-outlined text-[#B45309] text-2xl flex-shrink-0">info</span>
+          <div>
+            <p className="text-xs font-extrabold text-[#B45309] uppercase tracking-wider">Demo / Mock Mode Active</p>
+            <p className="text-[11px] text-on-surface-variant leading-relaxed mt-0.5">
+              No Gemini API key is configured. Any scan or search will simulate results using mock sample database items. Go to the <strong>Health Profile → Settings</strong> tab to add your Google AI Studio API key and enable live Gemini AI analysis.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Modern Tabs */}
       <div className="flex gap-2 border-b border-outline-variant/30 pb-0.5 mb-6">

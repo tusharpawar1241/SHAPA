@@ -74,13 +74,19 @@ export default function App() {
     }
   });
 
-  const envApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+  const rawEnvApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+  const envApiKey = (rawEnvApiKey.trim() === '' || rawEnvApiKey.includes('YOUR_GEMINI_API_KEY_HERE')) ? '' : rawEnvApiKey;
 
   // Default API Settings state
   const [apiSettings, setApiSettings] = useState(() => {
     const cachedSettings = localStorage.getItem('guardian_api_settings');
     if (cachedSettings) {
       const parsed = JSON.parse(cachedSettings);
+      // Clean up placeholder key in cached settings
+      if (parsed.apiKey && (parsed.apiKey.includes('YOUR_GEMINI_API_KEY_HERE') || parsed.apiKey.trim() === '')) {
+        parsed.apiKey = '';
+        parsed.mode = 'mock';
+      }
       if (envApiKey) {
         parsed.apiKey = envApiKey;
         parsed.mode = 'gemini';
@@ -277,122 +283,61 @@ export default function App() {
   const analyzeBase64Image = useCallback(async (base64Image, mimeType) => {
     startLoading('Analyzing Label via Gemini', 'Connecting to Google AI Studio...');
 
-    if (apiSettings.mode === 'mock' || !apiSettings.apiKey) {
-      setTimeout(() => updateLoadingStatus('OCR character extraction complete...'), 1000);
-      setTimeout(() => {
-        const samples = mockDatabase[activeCategory] || [];
-        const item = samples[Math.floor(Math.random() * samples.length)];
-        const evaluated = runRulesEngine(item, activeCategory, userProfile);
-        setResultsData(evaluated);
-        addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, activeCategory);
+    try {
+      updateLoadingStatus('Sending payload to Gemini model...');
+      const parsed = await analyzeProductWithLangchain(activeCategory, userProfile, apiSettings, null, base64Image, mimeType);
+      
+      if (parsed.error_message) {
         stopLoading();
-        switchView('results');
-      }, 2000);
-    } else {
-      try {
-        updateLoadingStatus('Sending payload to Gemini model...');
-        const parsed = await analyzeProductWithLangchain(activeCategory, userProfile, apiSettings, null, base64Image, mimeType);
-        
-        if (parsed.error_message) {
-          stopLoading();
-          showToast(parsed.error_message, 'error');
-          return;
-        }
-
-        // Auto-correct category if AI detected a different product type
-        const realCategory = parsed.detected_category || activeCategory;
-        if (realCategory !== activeCategory) {
-          setActiveCategory(realCategory);
-        }
-        normalizeAlternatives(parsed, realCategory);
-        setResultsData(parsed);
-        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
-        stopLoading();
-        switchView('results');
-      } catch (err) {
-        console.error(err);
-        stopLoading();
-        alert('AI Analysis Failed: ' + err.message);
+        showToast(`API connection problem: ${parsed.error_message}`, 'error');
+        return;
       }
+
+      // Auto-correct category if AI detected a different product type
+      const realCategory = parsed.detected_category || activeCategory;
+      if (realCategory !== activeCategory) {
+        setActiveCategory(realCategory);
+      }
+      normalizeAlternatives(parsed, realCategory);
+      setResultsData(parsed);
+      addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
+      stopLoading();
+      switchView('results');
+    } catch (err) {
+      console.error(err);
+      stopLoading();
+      showToast('API connection problem: ' + (err.message || 'Unknown error'), 'error');
     }
   }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView, showToast]);
 
   // Gemini API text search caller
   const analyzeTextQuery = useCallback(async (queryText, compareText, activeCategoryOverride) => {
     const category = activeCategoryOverride || activeCategory;
-    startLoading('AI Product Identification', 'Searching product databases...');
+    startLoading('AI Product Identification', 'Connecting to Google AI Studio...');
 
-    if (apiSettings.mode === 'mock' || !apiSettings.apiKey) {
-      setTimeout(() => updateLoadingStatus('Matching ingredients profile...'), 1000);
-      setTimeout(() => {
-        const samples = mockDatabase[category] || [];
-        let matchedItem = null;
-        const queryLower = (queryText || '').toLowerCase();
-        
-        if (category === 'medicine') {
-          const compareLower = (compareText || '').toLowerCase();
-          const isMetformin = queryLower.includes('metformin') || compareLower.includes('metformin');
-          const isIbuprofen = queryLower.includes('ibuprofen') || compareLower.includes('ibuprofen') || queryLower.includes('advil') || compareLower.includes('advil');
-          
-          if (isMetformin && isIbuprofen) {
-            const baseMetformin = samples.find(s => s.id === 'sample_metformin');
-            if (baseMetformin) {
-              matchedItem = { ...baseMetformin, product_name: 'Metformin + Ibuprofen Combo', extracted_ingredients: [...baseMetformin.extracted_ingredients, 'Ibuprofen 400mg'] };
-            }
-          }
-        }
-
-        if (!matchedItem && queryText) {
-          matchedItem = samples.find(s => 
-            s.product_name.toLowerCase().includes(queryLower) || 
-            s.id.toLowerCase().includes(queryLower) ||
-            s.brand_name.toLowerCase().includes(queryLower)
-          );
-        }
-
-        if (!matchedItem) {
-          matchedItem = samples[0] || {
-            product_name: queryText || 'Custom Product',
-            brand_name: 'Generic AI Brand',
-            extracted_ingredients: ['Water', 'Sugar', 'Sodium Chloride'],
-            safety_score: 8.0,
-            better_alternatives: [],
-            disclaimer: 'Simulated results for unlisted mock item.'
-          };
-        }
-
-        const evaluated = runRulesEngine(matchedItem, category, userProfile);
-        setResultsData(evaluated);
-        addToHistory(evaluated.product_name, evaluated.brand_name, evaluated.safety_score, category);
+    try {
+      const parsed = await analyzeProductWithLangchain(category, userProfile, apiSettings, queryText, null, null, compareText);
+      
+      if (parsed.error_message) {
         stopLoading();
-        switchView('results');
-      }, 2000);
-    } else {
-      try {
-        updateLoadingStatus('Connecting to Gemini AI Studio...');
-        const parsed = await analyzeProductWithLangchain(category, userProfile, apiSettings, queryText, null, null, compareText);
-        
-        if (parsed.error_message) {
-          stopLoading();
-          showToast(parsed.error_message, 'error');
-          return;
-        }
-
-        // Auto-correct category if AI detected a different product type
-        const realCategory = parsed.detected_category || category;
-        if (realCategory !== activeCategory) {
-          setActiveCategory(realCategory);
-        }
-        normalizeAlternatives(parsed, realCategory);
-        setResultsData(parsed);
-        addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
-        stopLoading();
-        switchView('results');
-      } catch (err) {
-        console.error(err);
-        stopLoading();
-        alert('AI Search Failed: ' + err.message);
+        showToast(`API connection problem: ${parsed.error_message}`, 'error');
+        return;
       }
+
+      // Auto-correct category if AI detected a different product type
+      const realCategory = parsed.detected_category || category;
+      if (realCategory !== activeCategory) {
+        setActiveCategory(realCategory);
+      }
+      normalizeAlternatives(parsed, realCategory);
+      setResultsData(parsed);
+      addToHistory(parsed.product_name, parsed.brand_name, parsed.safety_score, realCategory);
+      stopLoading();
+      switchView('results');
+    } catch (err) {
+      console.error(err);
+      stopLoading();
+      showToast('API connection problem: ' + (err.message || 'Unknown error'), 'error');
     }
   }, [activeCategory, userProfile, apiSettings, addToHistory, normalizeAlternatives, startLoading, updateLoadingStatus, stopLoading, switchView, showToast]);
 
@@ -412,7 +357,8 @@ export default function App() {
       {/* 1. Sidebar Nav (Desktop only) */}
       <Sidebar 
         currentView={currentView} 
-        switchView={switchView} 
+        switchView={switchView}
+        apiSettings={apiSettings} 
       />
 
       {/* Main content view column */}
@@ -446,6 +392,7 @@ export default function App() {
               analyzeTextQuery={analyzeTextQuery}
               viewHistoryItem={viewHistoryItem}
               hapticFeedback={hapticFeedback}
+              apiSettings={apiSettings}
             />
           )}
 
@@ -453,7 +400,9 @@ export default function App() {
             <ResultsView 
               resultsData={resultsData} 
               activeCategory={activeCategory} 
-              switchView={switchView} 
+              switchView={switchView}
+              userProfile={userProfile}
+              apiSettings={apiSettings}
             />
           )}
 
@@ -504,7 +453,7 @@ export default function App() {
       </button>
 
       {/* 2. Bottom Nav (Mobile only) */}
-      <BottomNav currentView={currentView} switchView={switchView} />
+      <BottomNav currentView={currentView} switchView={switchView} apiSettings={apiSettings} />
 
       {/* 3. Loading Overlay */}
       <LoadingOverlay 

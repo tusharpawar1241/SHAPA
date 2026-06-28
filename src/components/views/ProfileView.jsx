@@ -102,26 +102,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // API Settings integration
-  const [mode, setMode] = useState(apiSettings?.mode || 'mock');
-  const [apiKey, setApiKey] = useState(apiSettings?.apiKey || '');
-  const [model, setModel] = useState(apiSettings?.model === 'gemini-1.5-flash' ? 'gemini-2.5-flash' : (apiSettings?.model || 'gemini-2.5-flash'));
-  const [verbose, setVerbose] = useState(apiSettings?.verbose !== false);
-  const [haptic, setHaptic] = useState(apiSettings?.haptic !== false);
-
-  // Sync / Reset settings state when apiSettings changes during render phase
-  const [prevApiSettings, setPrevApiSettings] = useState(apiSettings);
-  if (apiSettings !== prevApiSettings) {
-    setPrevApiSettings(apiSettings);
-    if (apiSettings) {
-      setMode(apiSettings.mode || 'mock');
-      setApiKey(apiSettings.apiKey || '');
-      setModel(apiSettings.model === 'gemini-1.5-flash' ? 'gemini-2.5-flash' : (apiSettings.model || 'gemini-2.5-flash'));
-      setVerbose(apiSettings.verbose !== false);
-      setHaptic(apiSettings.haptic !== false);
-    }
-  }
-
   // Sync inputs with userProfile prop on mount/change
   useEffect(() => {
     if (!userProfile) return;
@@ -380,15 +360,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
 
     setTimeout(() => {
       saveProfile(updated);
-      if (saveSettings) {
-        saveSettings({
-          mode,
-          apiKey: apiKey.trim(),
-          model,
-          verbose,
-          haptic
-        });
-      }
       setIsSaving(false);
       if (showToast) showToast("Profile and configurations saved successfully!", "success");
     }, 1200);
@@ -1072,71 +1043,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* SECTION 11: Gemini AI Settings */}
-            <div className="flex flex-col gap-4 border-t border-outline-variant/30 pt-6">
-              <h3 className="text-sm font-extrabold text-primary flex items-center gap-1.5 uppercase tracking-wider">
-                <span className="material-symbols-outlined text-[18px]">auto_awesome</span> Gemini AI Configuration
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                {/* Operation Mode */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-on-surface">Operation Mode</label>
-                  <select 
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value)}
-                    className="w-full p-3 border border-outline-variant/50 bg-white rounded-xl outline-none text-xs focus:border-primary transition-all cursor-pointer"
-                  >
-                    <option value="mock">Simulated Mode (Mock Data - Offline)</option>
-                    <option value="gemini">Gemini API Mode (Real AI Label Analysis)</option>
-                  </select>
-                  <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                    Choose whether to run on mock rules or call Google's live Gemini models.
-                  </p>
-                </div>
-
-                {/* Gemini Model */}
-                {mode === 'gemini' && (
-                  <div className="flex flex-col gap-1.5 animate-[fadeIn_0.2s_ease]">
-                    <label className="text-xs font-semibold text-on-surface">Gemini LLM Model</label>
-                    <select 
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      className="w-full p-3 border border-outline-variant/50 bg-white rounded-xl outline-none text-xs focus:border-primary transition-all cursor-pointer"
-                    >
-                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended - Fast)</option>
-                      <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning)</option>
-                    </select>
-                  </div>
-                )}
-                
-              </div>
-
-              {/* Gemini API Key */}
-              {mode === 'gemini' && (
-                <div className="flex flex-col gap-1.5 animate-[fadeIn_0.2s_ease]">
-                  <label className="text-xs font-semibold text-on-surface flex items-center justify-between">
-                    <span>Gemini API Key</span>
-                    <a 
-                      href="https://aistudio.google.com/" 
-                      target="_blank" 
-                      rel="noreferrer" 
-                      className="text-[10px] text-primary hover:underline font-bold"
-                    >
-                      Get Key from Google AI Studio
-                    </a>
-                  </label>
-                  <input 
-                    type="password" 
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="w-full p-3 border border-outline-variant/50 rounded-xl outline-none text-xs focus:border-primary focus:ring-1 focus:ring-primary transition-all bg-white"
-                    placeholder="Paste your Gemini API Key here (AIzaSy...)"
-                  />
-                </div>
-              )}
             </div>
 
             {/* Form Actions */}
