@@ -104,8 +104,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
   const [notifyHealthTips, setNotifyHealthTips] = useState(true);
 
   // API Local States (Integrated inside the Settings tab)
-  const [apiMode, setApiMode] = useState(apiSettings?.mode || 'mock');
-  const [apiKey, setApiKey] = useState(apiSettings?.apiKey || '');
   const [apiModel, setApiModel] = useState(apiSettings?.model || 'gemini-2.5-flash');
   const [apiVerbose, setApiVerbose] = useState(!!apiSettings?.verbose);
   const [apiHaptic, setApiHaptic] = useState(!!apiSettings?.haptic);
@@ -197,8 +195,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
   // Sync API settings state when prop changes
   useEffect(() => {
     if (apiSettings) {
-      setApiMode(apiSettings.mode || 'mock');
-      setApiKey(apiSettings.apiKey || '');
       setApiModel(apiSettings.model || 'gemini-2.5-flash');
       setApiVerbose(!!apiSettings.verbose);
       setApiHaptic(!!apiSettings.haptic);
@@ -468,8 +464,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
     // Save settings if changed
     if (saveSettings) {
       saveSettings({
-        mode: apiMode,
-        apiKey: apiKey,
         model: apiModel,
         verbose: apiVerbose,
         haptic: apiHaptic
@@ -648,8 +642,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
       // Reset integrated settings correctly via callback
       if (saveSettings) {
         saveSettings({
-          mode: 'mock',
-          apiKey: '',
           model: 'gemini-2.5-flash',
           verbose: true,
           haptic: true
@@ -1120,8 +1112,7 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
             { id: 'medical', label: 'Medical Conditions', icon: <Stethoscope size={15} /> },
             { id: 'allergies', label: 'Allergies & Diet', icon: <Droplet size={15} /> },
             { id: 'skin', label: 'Skin & Cosmetics', icon: <Sparkles size={15} /> },
-            { id: 'hair', label: 'Hair Profile', icon: <Scissors size={15} /> },
-            { id: 'alerts', label: 'Alerts & API Settings', icon: <BellRing size={15} /> }
+            { id: 'hair', label: 'Hair Profile', icon: <Scissors size={15} /> }
           ].map(tab => (
             <button
               key={tab.id}
@@ -1500,98 +1491,6 @@ export default function ProfileView({ userProfile, saveProfile, showToast, apiSe
               </div>
             )}
 
-            {/* TAB 6: Alerts & Settings */}
-            {activeTab === 'alerts' && (
-              <div className="flex flex-col gap-6">
-                
-                {/* Notification Settings */}
-                <div className="flex flex-col gap-4">
-                  <div className="pb-3 border-b border-outline-variant/20">
-                    <h3 className="text-base font-black text-on-surface flex items-center gap-2">
-                      <BellRing size={18} className="text-blue-500" /> Notification Toggles
-                    </h3>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      Configure active scanning system popup warning alerts.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      { label: 'Harmful Ingredients', state: notifyHarmful, setter: setNotifyHarmful, desc: 'Flag carcinogens & controversies' },
-                      { label: 'Food Allergens', state: notifyFoodAllergens, setter: setNotifyFoodAllergens, desc: 'Allergy alerts on food label scans' },
-                      { label: 'Cosmetic Allergens', state: notifyCosmeticAllergens, setter: setNotifyCosmeticAllergens, desc: 'Warning matches on cosmetics' },
-                      { label: 'Skin Irritants', state: notifySkinIrritants, setter: setNotifySkinIrritants, desc: 'Alerts matching skin type' },
-                    ].map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-3 rounded-xl border border-outline-variant/30 bg-slate-50/40">
-                        <div className="flex flex-col pr-4">
-                          <span className="text-xs font-bold text-on-surface">{item.label}</span>
-                          <span className="text-[10px] text-on-surface-variant">{item.desc}</span>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer select-none">
-                          <input 
-                            type="checkbox" 
-                            checked={item.state} 
-                            onChange={(e) => item.setter(e.target.checked)} 
-                            className="sr-only peer" 
-                          />
-                          <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* API settings */}
-                <div className="flex flex-col gap-4 mt-2">
-                  <div className="pb-3 border-b border-outline-variant/20">
-                    <h3 className="text-base font-black text-on-surface flex items-center gap-2">
-                      <Settings size={18} className="text-primary" /> Gemini AI Engine Settings
-                    </h3>
-                    <p className="text-xs text-on-surface-variant mt-0.5">
-                      Configure your Google Gemini API key to enable live label parsing.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-extrabold uppercase text-on-surface-variant">API Connection Mode</label>
-                      <select 
-                        value={apiMode} 
-                        onChange={(e) => setApiMode(e.target.value)}
-                        className="w-full p-3 border border-outline-variant/50 bg-white rounded-xl outline-none text-xs focus:border-primary transition-all"
-                      >
-                        <option value="mock">Offline Simulation (No API Key Required)</option>
-                        <option value="gemini">Google Gemini Live Connection</option>
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-extrabold uppercase text-on-surface-variant">Gemini Model selection</label>
-                      <select 
-                        value={apiModel} 
-                        onChange={(e) => setApiModel(e.target.value)}
-                        className="w-full p-3 border border-outline-variant/50 bg-white rounded-xl outline-none text-xs focus:border-primary transition-all"
-                      >
-                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
-                        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Thorough)</option>
-                      </select>
-                    </div>
-
-                    {apiMode === 'gemini' && (
-                      <div className="flex flex-col gap-1.5 sm:col-span-2 animate-fade-in">
-                        <label className="text-[10px] font-extrabold uppercase text-on-surface-variant">Google AI Studio API Key</label>
-                        <input 
-                          type="password" 
-                          value={apiKey} 
-                          onChange={(e) => setApiKey(e.target.value)}
-                          className="w-full p-3 border border-outline-variant/50 rounded-xl outline-none text-xs focus:border-primary bg-white"
-                          placeholder="AIzaSy..."
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            )}
 
             {/* Form Action buttons */}
             <div className="flex gap-4 pt-4 border-t border-outline-variant/30 mt-4">

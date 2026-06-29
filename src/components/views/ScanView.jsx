@@ -229,7 +229,7 @@ export default function ScanView({
           <div>
             <p className="text-xs font-extrabold text-[#B45309] uppercase tracking-wider">Demo / Mock Mode Active</p>
             <p className="text-[11px] text-on-surface-variant leading-relaxed mt-0.5">
-              No Gemini API key is configured. Any scan or search will simulate results using mock sample database items. Go to the <strong>Health Profile → Settings</strong> tab to add your Google AI Studio API key and enable live Gemini AI analysis.
+              No Gemini API key is configured in the environment variables. Any scan or search will simulate results using mock sample database items. Please set the <strong>VITE_GEMINI_API_KEY</strong> environment variable to enable live Gemini AI analysis.
             </p>
           </div>
         </div>

@@ -80,28 +80,22 @@ export default function App() {
   // Default API Settings state
   const [apiSettings, setApiSettings] = useState(() => {
     const cachedSettings = localStorage.getItem('guardian_api_settings');
+    let parsed = {};
     if (cachedSettings) {
-      const parsed = JSON.parse(cachedSettings);
-      // Clean up placeholder key in cached settings
-      if (parsed.apiKey && (parsed.apiKey.includes('YOUR_GEMINI_API_KEY_HERE') || parsed.apiKey.trim() === '')) {
-        parsed.apiKey = '';
-        parsed.mode = 'mock';
+      try {
+        parsed = JSON.parse(cachedSettings);
+      } catch (e) {
+        console.error("Error parsing cached settings:", e);
       }
-      if (envApiKey) {
-        parsed.apiKey = envApiKey;
-        parsed.mode = 'gemini';
-      }
-      if (parsed.model === 'gemini-1.5-flash') {
-        parsed.model = 'gemini-2.5-flash';
-      }
-      return parsed;
     }
+    
+    // Always resolve mode and apiKey dynamically based on env variable for security
     return {
       mode: envApiKey ? 'gemini' : 'mock',
       apiKey: envApiKey,
-      model: 'gemini-2.5-flash',
-      verbose: true,
-      haptic: true
+      model: parsed.model || 'gemini-2.5-flash',
+      verbose: parsed.verbose !== false,
+      haptic: parsed.haptic !== false
     };
   });
 
@@ -223,8 +217,21 @@ export default function App() {
   }, [currentUser, userProfile]);
 
   const saveSettings = useCallback((updatedSettings) => {
-    setApiSettings(updatedSettings);
-    localStorage.setItem('guardian_api_settings', JSON.stringify(updatedSettings));
+    // Only extract and save non-credentials settings to local storage
+    const { model, verbose, haptic } = updatedSettings;
+    
+    setApiSettings(prev => ({
+      ...prev,
+      model: model || 'gemini-2.5-flash',
+      verbose: verbose !== false,
+      haptic: haptic !== false
+    }));
+    
+    localStorage.setItem('guardian_api_settings', JSON.stringify({
+      model: model || 'gemini-2.5-flash',
+      verbose: verbose !== false,
+      haptic: haptic !== false
+    }));
   }, []);
 
   const clearHistory = useCallback(async () => {

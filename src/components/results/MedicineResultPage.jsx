@@ -205,7 +205,7 @@ export default function MedicineResultPage({ resultsData, switchView, userProfil
           <div>
             <p className="text-xs font-extrabold text-[#B45309] uppercase tracking-wider">Simulated Demo Report</p>
             <p className="text-[11px] text-on-surface-variant leading-relaxed mt-0.5">
-              No Gemini API key is configured. This is a static mock report shown for demonstration purposes. Go to <strong>Health Profile → Settings</strong> to add your Google AI Studio API key and scan real items.
+              No Gemini API key is configured in the environment variables. This is a static mock report shown for demonstration purposes. Please set the <strong>VITE_GEMINI_API_KEY</strong> environment variable to enable live Gemini AI analysis and scan real items.
             </p>
           </div>
         </div>

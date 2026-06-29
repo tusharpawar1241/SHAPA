@@ -66,13 +66,11 @@ function extractJSON(raw) {
   if (!raw || typeof raw !== "string") {
     throw new Error("Empty or non-string response from AI model.");
   }
-  // Strip ```json ... ``` or ``` ... ``` wrappers
   const cleaned = raw
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```\s*$/i, "")
     .trim();
 
-  // Find first { and last } to safely extract JSON
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start === -1 || end === -1) {
@@ -91,69 +89,94 @@ export const analyzeProductWithLangchain = async (
   mimeType = null,
   compareText = null
 ) => {
-  const model = new ChatGoogleGenerativeAI({
-    model: apiSettings.model || "gemini-2.5-flash",
-    apiKey: apiSettings.apiKey,
-    temperature: 0.1,
-  });
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-  // Build the prompt with direct string interpolation — safe from LangChain
-  // template engine issues with JSON braces in the profile object
-  const profileString = JSON.stringify(userProfile || {});
-  const prompt = buildPrompt(category || "food", profileString);
+  // Local development fallback: call Gemini directly from browser if API key is present
+  if (isLocalhost && apiSettings?.apiKey) {
+    const model = new ChatGoogleGenerativeAI({
+      model: apiSettings.model || "gemini-2.5-flash",
+      apiKey: apiSettings.apiKey,
+      temperature: 0.1,
+    });
 
-  if (apiSettings.verbose) {
-    console.log("GUARDIAN PROMPT (first 500 chars):", prompt.slice(0, 500));
-  }
-
-  try {
-    let response;
-
-    if (base64Image && mimeType) {
-      // Vision / image scan
-      const message = new HumanMessage({
-        content: [
-          { type: "text", text: prompt },
-          {
-            type: "image_url",
-            image_url: { url: `data:${mimeType};base64,${base64Image}` },
-          },
-        ],
-      });
-      response = await model.invoke([message]);
-    } else {
-      // Text search
-      let queryMsg = queryText
-        ? `Product Query: ${queryText}`
-        : "Analyze this product based on generic data.";
-      if (compareText) {
-        queryMsg += `\nAlso check interactions with: "${compareText}".`;
-      }
-      const message = new HumanMessage({
-        content: [
-          { type: "text", text: prompt },
-          { type: "text", text: queryMsg },
-        ],
-      });
-      response = await model.invoke([message]);
-    }
-
-    const raw = response?.content;
+    const profileString = JSON.stringify(userProfile || {});
+    const prompt = buildPrompt(category || "food", profileString);
 
     if (apiSettings.verbose) {
-      console.log("GUARDIAN RESPONSE:", raw);
+      console.log("GUARDIAN PROMPT (Localhost / first 500 chars):", prompt.slice(0, 500));
     }
 
-    // Parse JSON safely — handles markdown-fenced and bare JSON responses
-    const parsed = extractJSON(raw);
-    return parsed;
+    try {
+      let response;
+      if (base64Image && mimeType) {
+        const message = new HumanMessage({
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: { url: `data:${mimeType};base64,${base64Image}` },
+            },
+          ],
+        });
+        response = await model.invoke([message]);
+      } else {
+        let queryMsg = queryText
+          ? `Product Query: ${queryText}`
+          : "Analyze this product based on generic data.";
+        if (compareText) {
+          queryMsg += `\nAlso check interactions with: "${compareText}".`;
+        }
+        const message = new HumanMessage({
+          content: [
+            { type: "text", text: prompt },
+            { type: "text", text: queryMsg },
+          ],
+        });
+        response = await model.invoke([message]);
+      }
 
+      const raw = response?.content;
+      if (apiSettings.verbose) {
+        console.log("GUARDIAN RESPONSE (Localhost):", raw);
+      }
+      return extractJSON(raw);
+    } catch (error) {
+      console.error("Guardian AI Local Analysis Error:", error);
+      return {
+        error_message: `Local analysis failed: ${error.message || "Unknown error."}`,
+      };
+    }
+  }
+
+  // Production Serverless Call: Route requests through the secure Vercel backend endpoint
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        category,
+        userProfile,
+        queryText,
+        base64Image,
+        mimeType,
+        compareText,
+        model: apiSettings?.model || 'gemini-2.5-flash'
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error_message || `Server returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Guardian AI Analysis Error:", error);
-    // Return a structured error object instead of throwing, so the UI can
-    // show a friendly toast instead of a raw JS alert
+    console.error("Guardian AI Serverless Analysis Error:", error);
     return {
-      error_message: `Analysis failed: ${error.message || "Unknown error. Check your API key and network connection."}`,
+      error_message: `Analysis failed: ${error.message || "Unknown serverless error."}`,
     };
   }
 };
