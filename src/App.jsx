@@ -125,9 +125,12 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
+        
+        // 1. Fetch user health profile details
         try {
           const docRef = doc(db, 'users', user.uid);
           const docSnap = await getDoc(docRef);
+          
           if (docSnap.exists()) {
             const firestoreProfile = docSnap.data();
             // Keep the profile name in sync with the Google account name
@@ -154,17 +157,11 @@ export default function App() {
             setUserProfile(defaultProfile);
             setCurrentView('profile');
           }
-
-          // Fetch user scans from Firestore
-          const scansCol = collection(db, 'users', user.uid, 'scans');
-          const scansQuery = query(scansCol, orderBy('timestamp', 'desc'), limit(15));
-          const scansSnap = await getDocs(scansQuery);
-          const fetchedScans = scansSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setScanHistory(fetchedScans);
-
-        } catch (error) {
-          console.error("Error fetching profile or scans from Firestore:", error);
-          const cachedProfile = localStorage.getItem('guardian_user_profile');
+        } catch (profileError) {
+          console.error("Error fetching/setting profile from Firestore:", profileError);
+          showToast("Cloud profile sync error. Please verify your Firestore settings.", "error");
+          
+          const cachedProfile = localStorage.getItem(`guardian_user_profile_${user.uid}`) || localStorage.getItem('guardian_user_profile');
           if (cachedProfile) {
             const parsed = JSON.parse(cachedProfile);
             setUserProfile(parsed);
@@ -176,11 +173,23 @@ export default function App() {
           } else {
             setCurrentView('profile');
           }
+        }
 
+        // 2. Fetch user scans history independently
+        try {
+          const scansCol = collection(db, 'users', user.uid, 'scans');
+          const scansQuery = query(scansCol, orderBy('timestamp', 'desc'), limit(15));
+          const scansSnap = await getDocs(scansQuery);
+          const fetchedScans = scansSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setScanHistory(fetchedScans);
+        } catch (scanError) {
+          console.error("Error fetching scans from Firestore:", scanError);
           // Fallback to local scans cache if offline/query fails
-          const cachedHistory = localStorage.getItem('guardian_scan_history');
+          const cachedHistory = localStorage.getItem(`guardian_scan_history_${user.uid}`) || localStorage.getItem('guardian_scan_history');
           if (cachedHistory) {
             setScanHistory(JSON.parse(cachedHistory));
+          } else {
+            setScanHistory([]);
           }
         }
       } else {
@@ -192,7 +201,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [showToast]);
 
   const switchView = useCallback((viewName) => setCurrentView(viewName), []);
   const selectCategory = useCallback((category) => setActiveCategory(category), []);
@@ -200,21 +209,27 @@ export default function App() {
   const saveProfile = useCallback(async (updatedProfile) => {
     const wasIncomplete = !userProfile?.profileCompleted;
     setUserProfile(updatedProfile);
-    localStorage.setItem('guardian_user_profile', JSON.stringify(updatedProfile));
+    if (currentUser) {
+      localStorage.setItem(`guardian_user_profile_${currentUser.uid}`, JSON.stringify(updatedProfile));
+    } else {
+      localStorage.setItem('guardian_user_profile', JSON.stringify(updatedProfile));
+    }
     
     if (currentUser) {
       try {
         const docRef = doc(db, 'users', currentUser.uid);
         await setDoc(docRef, updatedProfile);
+        showToast("Profile backed up to cloud database.", "success");
       } catch (error) {
         console.error("Error saving profile to Firestore:", error);
+        showToast("Could not save to Cloud Firestore. Please check Firebase rules or database settings.", "error");
       }
     }
 
     if (wasIncomplete && updatedProfile.profileCompleted) {
       setCurrentView('home');
     }
-  }, [currentUser, userProfile]);
+  }, [currentUser, userProfile, showToast]);
 
   const saveSettings = useCallback((updatedSettings) => {
     // Only extract and save non-credentials settings to local storage
@@ -236,7 +251,11 @@ export default function App() {
 
   const clearHistory = useCallback(async () => {
     setScanHistory([]);
-    localStorage.removeItem('guardian_scan_history');
+    if (currentUser) {
+      localStorage.removeItem(`guardian_scan_history_${currentUser.uid}`);
+    } else {
+      localStorage.removeItem('guardian_scan_history');
+    }
     if (currentUser) {
       try {
         const scansCol = collection(db, 'users', currentUser.uid, 'scans');
@@ -272,7 +291,11 @@ export default function App() {
 
     setScanHistory(prev => {
       const updated = [newItem, ...prev].slice(0, 15);
-      localStorage.setItem('guardian_scan_history', JSON.stringify(updated));
+      if (currentUser) {
+        localStorage.setItem(`guardian_scan_history_${currentUser.uid}`, JSON.stringify(updated));
+      } else {
+        localStorage.setItem('guardian_scan_history', JSON.stringify(updated));
+      }
       return updated;
     });
 
@@ -282,9 +305,10 @@ export default function App() {
         await addDoc(scansCol, newItem);
       } catch (error) {
         console.error("Error saving scan to Firestore:", error);
+        showToast("Cloud sync failed for this scan.", "warning");
       }
     }
-  }, [currentUser]);
+  }, [currentUser, showToast]);
 
   // Shared helper to normalize alternatives from Gemini response — avoids code duplication
   const normalizeAlternatives = useCallback((parsed, category) => {
